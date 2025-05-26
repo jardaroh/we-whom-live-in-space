@@ -3,6 +3,7 @@ use bevy::{
   color::palettes::basic::*,
 };
 use crate::resources::theme::Theme;
+use crate::constants::SizingMode;
 
 pub fn button_system(
   theme: Res<Theme>,
@@ -38,7 +39,7 @@ pub fn button_system(
   }
 }
 
-pub fn button(asset_server: &AssetServer, theme: &Theme) -> impl Bundle + use<> {
+pub fn button(asset_server: &AssetServer, theme: &Theme, sizing_mode: SizingMode) -> impl Bundle + use<> {
   (
     Node {
       width: Val::Px(200.0),

@@ -2,6 +2,8 @@ use bevy::{
     prelude::*,
 };
 
+mod constants;
+
 mod resources {
   pub mod theme;
 }
@@ -10,8 +12,10 @@ mod ui {
     pub mod button;
 }
 
+use constants::{
+    SizingMode,
+};
 use crate::resources::theme::Theme;
-
 use crate::ui::button::{button, button_system};
 
 // Define game states
@@ -34,7 +38,7 @@ fn setup(mut commands: Commands, assets: Res<AssetServer>) {
 }
 
 fn setup_ui(mut commands: Commands, assets: Res<AssetServer>, theme: Res<Theme>) {
-  commands.spawn(button(&assets, &theme));
+  commands.spawn(button(&assets, &theme, SizingMode::Fixed));
 }
 
 fn main() {
