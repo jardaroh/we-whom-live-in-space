@@ -22,22 +22,28 @@ pub enum GameState {
     InGame,
 }
 
-fn setup(mut commands: Commands, assets: Res<AssetServer>) {
-  commands.spawn(Camera2d);
-
+fn setup_theme(mut commands: Commands, assets: Res<AssetServer>) {
   commands.insert_resource(Theme {
     font: assets.load("fonts/FiraSans-Bold.ttf"),
     ..Default::default()
   });
+}
 
-  commands.spawn(button(&assets));
+fn setup(mut commands: Commands, assets: Res<AssetServer>) {
+  commands.spawn(Camera2d);
+}
+
+fn setup_ui(mut commands: Commands, assets: Res<AssetServer>, theme: Res<Theme>) {
+  commands.spawn(button(&assets, &theme));
 }
 
 fn main() {
   App::new()
     .add_plugins(DefaultPlugins)
     .init_state::<GameState>()
+    .add_systems(PreStartup, setup_theme)
     .add_systems(Startup, setup)
+    .add_systems(Startup, setup_ui)
     .add_systems(Update, button_system)
     .run();
 }

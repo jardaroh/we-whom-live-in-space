@@ -2,8 +2,10 @@ use bevy::{
   prelude::*,
   color::palettes::basic::*,
 };
+use crate::resources::theme::Theme;
 
 pub fn button_system(
+  theme: Res<Theme>,
   mut interaction_query: Query<(
     &Interaction,
     &mut BackgroundColor,
@@ -19,24 +21,24 @@ pub fn button_system(
     match *interaction {
       Interaction::Hovered => {
         **text = "Hover".to_string();
-        *color = Color::srgb(0.2, 0.6, 0.2).into();
-        border_color.0 = Color::srgb(0.1, 0.5, 0.1).into();
+        *color = theme.gray.six.into();
+        border_color.0 = theme.gray.one.into();
       }
       Interaction::Pressed => {
         **text = "Pressed".to_string();
-        *color = Color::srgb(0.6, 0.2, 0.2).into();
-        border_color.0 = Color::srgb(0.5, 0.1, 0.1).into();
+        *color = theme.gray.five.into();
+        border_color.0 = theme.gray.one.into();
       }
       Interaction::None => {
         **text = "Click Me".to_string();
-        *color = Color::srgb(0.2, 0.2, 0.8).into();
-        border_color.0 = Color::srgb(0.1, 0.1, 0.5).into();
+        *color = theme.gray.seven.into();
+        border_color.0 = theme.gray.one.into();
       }
     }
   }
 }
 
-pub fn button(asset_server: &AssetServer) -> impl Bundle + use<> {
+pub fn button(asset_server: &AssetServer, theme: &Theme) -> impl Bundle + use<> {
   (
     Node {
       width: Val::Px(200.0),
@@ -61,12 +63,11 @@ pub fn button(asset_server: &AssetServer) -> impl Bundle + use<> {
       children![(
         Text::new("Button"),
         TextFont {
-          font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+          font: theme.font.clone(),
           font_size: 24.0,
           ..default()
         },
         TextColor(Color::WHITE),
-        TextShadow::default(),
       )]
     )],
   )
