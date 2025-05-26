@@ -58,7 +58,7 @@ pub fn button(asset_server: &AssetServer, theme: &Theme) -> impl Bundle + use<> 
         ..default()
       },
       BorderColor(Color::srgb(0.1, 0.1, 0.5)),
-      BorderRadius::MAX,
+      BorderRadius::all(Val::Px(2.0)),
       BackgroundColor(Color::srgb(0.2, 0.2, 0.8)),
       children![(
         Text::new("Button"),
