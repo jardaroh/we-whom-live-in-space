@@ -1,6 +1,5 @@
 use bevy::{
   prelude::*,
-  color::palettes::basic::*,
 };
 use crate::resources::theme::Theme;
 use crate::constants::SizingMode;

@@ -10,6 +10,7 @@ mod resources {
 
 mod ui {
   pub mod button;
+  pub mod layout;
 }
 
 use constants::{
@@ -17,6 +18,7 @@ use constants::{
 };
 use crate::resources::theme::Theme;
 use crate::ui::button::{button, button_system};
+use crate::ui::layout::grid;
 
 // Define game states
 #[derive(States, Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
@@ -38,10 +40,52 @@ fn setup(mut commands: Commands, assets: Res<AssetServer>) {
 }
 
 fn setup_ui(mut commands: Commands, assets: Res<AssetServer>, theme: Res<Theme>) {
-  commands.spawn(button(&assets, &theme, SizingMode::Fixed {
-    width: Val::Px(200.0),
-    height: Val::Px(50.0),
-  }));
+  commands.spawn(grid(&assets, &theme, SizingMode::Fill, 2, 3, 4.0))
+    .with_children(|parent| {
+      parent.spawn((
+        Node {
+          width: Val::Percent(100.0),
+          height: Val::Percent(100.0),
+          justify_content: JustifyContent::Center,
+          align_items: AlignItems::Center,
+          ..default()
+        },
+        BackgroundColor(theme.red.five.into()),
+      ));
+
+      parent.spawn((
+        Node {
+          width: Val::Percent(100.0),
+          height: Val::Percent(100.0),
+          justify_content: JustifyContent::Center,
+          align_items: AlignItems::Center,
+          ..default()
+        },
+        BackgroundColor(theme.green.five.into()),
+      ));
+
+      parent.spawn((
+        Node {
+          width: Val::Percent(100.0),
+          height: Val::Percent(100.0),
+          justify_content: JustifyContent::Center,
+          align_items: AlignItems::Center,
+          ..default()
+        },
+        BackgroundColor(theme.blue.five.into()),
+      ));
+
+      parent.spawn((
+        Node {
+          width: Val::Percent(100.0),
+          height: Val::Percent(100.0),
+          justify_content: JustifyContent::Center,
+          align_items: AlignItems::Center,
+          ..default()
+        },
+        BackgroundColor(theme.red.two.into()),
+      ));
+    });
 }
 
 fn main() {
