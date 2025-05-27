@@ -1,5 +1,5 @@
 use bevy::{
-    prelude::*,
+  prelude::*,
 };
 
 mod constants;
@@ -9,11 +9,11 @@ mod resources {
 }
 
 mod ui {
-    pub mod button;
+  pub mod button;
 }
 
 use constants::{
-    SizingMode,
+  SizingMode,
 };
 use crate::resources::theme::Theme;
 use crate::ui::button::{button, button_system};
@@ -21,9 +21,9 @@ use crate::ui::button::{button, button_system};
 // Define game states
 #[derive(States, Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
 pub enum GameState {
-    #[default]
-    MainMenu,
-    InGame,
+  #[default]
+  MainMenu,
+  InGame,
 }
 
 fn setup_theme(mut commands: Commands, assets: Res<AssetServer>) {
@@ -38,7 +38,10 @@ fn setup(mut commands: Commands, assets: Res<AssetServer>) {
 }
 
 fn setup_ui(mut commands: Commands, assets: Res<AssetServer>, theme: Res<Theme>) {
-  commands.spawn(button(&assets, &theme, SizingMode::Fixed));
+  commands.spawn(button(&assets, &theme, SizingMode::Fixed {
+    width: Val::Px(200.0),
+    height: Val::Px(50.0),
+  }));
 }
 
 fn main() {

@@ -39,11 +39,22 @@ pub fn button_system(
   }
 }
 
-pub fn button(asset_server: &AssetServer, theme: &Theme, sizing_mode: SizingMode) -> impl Bundle + use<> {
+pub fn button(asset_server: &AssetServer, theme: &Theme, sizing_mode: SizingMode) -> impl Bundle {
+  let (outer_node_width, outer_node_height) = match sizing_mode {
+    SizingMode::Fixed { width, height } => (width, height),
+    SizingMode::Fill => (Val::Percent(100.0), Val::Percent(100.0)),
+    SizingMode::FitContent => (Val::Auto, Val::Auto),
+  };
+
+  let (inner_node_width, inner_node_height) = match sizing_mode {
+    SizingMode::FitContent => (Val::Auto, Val::Auto),
+    _ => (Val::Percent(100.0), Val::Percent(100.0)),
+  };
+
   (
     Node {
-      width: Val::Px(200.0),
-      height: Val::Px(50.0),
+      width: outer_node_width,
+      height: outer_node_height,
       justify_content: JustifyContent::Center,
       align_items: AlignItems::Center,
       ..default()
@@ -51,16 +62,16 @@ pub fn button(asset_server: &AssetServer, theme: &Theme, sizing_mode: SizingMode
     children![(
       Button,
       Node {
-        width: Val::Percent(100.0),
-        height: Val::Percent(100.0),
+        width: inner_node_width,
+        height: inner_node_height,
         border: UiRect::all(Val::Px(2.0)),
         justify_content: JustifyContent::Center,
         align_items: AlignItems::Center,
         ..default()
       },
-      BorderColor(Color::srgb(0.1, 0.1, 0.5)),
+      BorderColor(theme.gray.one.into()),
       BorderRadius::all(Val::Px(2.0)),
-      BackgroundColor(Color::srgb(0.2, 0.2, 0.8)),
+      BackgroundColor(theme.gray.seven.into()),
       children![(
         Text::new("Button"),
         TextFont {
@@ -68,7 +79,7 @@ pub fn button(asset_server: &AssetServer, theme: &Theme, sizing_mode: SizingMode
           font_size: 24.0,
           ..default()
         },
-        TextColor(Color::WHITE),
+        TextColor(theme.gray.one.into()),
       )]
     )],
   )

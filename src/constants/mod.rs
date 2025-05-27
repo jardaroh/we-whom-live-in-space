@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 pub enum SizingMode {
-    Fixed,
+    Fixed { width: Val, height: Val},
     Fill,
     FitContent,
 }
