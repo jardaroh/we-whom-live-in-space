@@ -8,8 +8,8 @@ pub fn grid(
   asset_server: &AssetServer,
   theme: &Theme,
   sizing_mode: SizingMode,
-  cols: usize,
-  rows: usize,
+  grid_template_columns: Vec<RepeatedGridTrack>,
+  grid_template_rows: Vec<RepeatedGridTrack>,
   gap: f32,
 ) -> impl Bundle {
   let (outer_node_width, outer_node_height) = match sizing_mode {
@@ -17,9 +17,6 @@ pub fn grid(
     SizingMode::Fill => (Val::Percent(100.0), Val::Percent(100.0)),
     SizingMode::FitContent => (Val::Auto, Val::Auto),
   };
-
-  let grid_template_columns = vec![GridTrack::flex(1.0); cols];
-  let grid_template_rows = vec![GridTrack::flex(1.0); rows];
 
   let (column_gap, row_gap) = if gap > 0.0 {
     (Val::Px(gap), Val::Px(gap))

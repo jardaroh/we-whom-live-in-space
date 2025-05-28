@@ -17,20 +17,16 @@ pub fn button_system(
   mut text_query: Query<&mut Text>,
 ) {
   for (interaction, mut color, mut border_color, children) in &mut interaction_query {
-    let mut text = text_query.get_mut(children[0]).unwrap();
     match *interaction {
       Interaction::Hovered => {
-        **text = "Hover".to_string();
         *color = theme.gray.six.into();
         border_color.0 = theme.gray.one.into();
       }
       Interaction::Pressed => {
-        **text = "Pressed".to_string();
         *color = theme.gray.five.into();
         border_color.0 = theme.gray.one.into();
       }
       Interaction::None => {
-        **text = "Click Me".to_string();
         *color = theme.gray.seven.into();
         border_color.0 = theme.gray.one.into();
       }
@@ -38,7 +34,7 @@ pub fn button_system(
   }
 }
 
-pub fn button(asset_server: &AssetServer, theme: &Theme, sizing_mode: SizingMode) -> impl Bundle {
+pub fn button(text: &str, asset_server: &AssetServer, theme: &Theme, sizing_mode: SizingMode) -> impl Bundle {
   let (outer_node_width, outer_node_height) = match sizing_mode {
     SizingMode::Fixed { width, height } => (width, height),
     SizingMode::Fill => (Val::Percent(100.0), Val::Percent(100.0)),
@@ -72,7 +68,7 @@ pub fn button(asset_server: &AssetServer, theme: &Theme, sizing_mode: SizingMode
       BorderRadius::all(Val::Px(2.0)),
       BackgroundColor(theme.gray.seven.into()),
       children![(
-        Text::new("Button"),
+        Text::new(text.to_string()),
         TextFont {
           font: theme.font.clone(),
           font_size: 24.0,
