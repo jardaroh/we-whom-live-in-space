@@ -28,6 +28,16 @@ pub struct Theme {
   // border
   #[allow(unused)]
   pub corner_radius: Val,
+
+  // padding
+  #[allow(unused)]
+  pub padding: Val,
+
+  // outline
+  #[allow(unused)]
+  pub outline_width: Val,
+  #[allow(unused)]
+  pub outline_offset: Val,
 }
 
 impl Default for Theme {
@@ -50,5 +60,8 @@ fn init_theme() -> Theme {
     color_secondary_lightest: Color::srgb(0.7, 0.7, 0.7),
     font: Handle::default(),
     corner_radius: Val::Px(2.0),
+    padding: Val::Px(6.0),
+    outline_width: Val::Px(1.0),
+    outline_offset: Val::Px(-2.0),
   }
 }

@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::input_focus::tab_navigation::TabIndex;
 use super::ui_theme::Theme;
 
 #[derive(Component)]
@@ -21,6 +22,7 @@ pub fn checkbox(
       ..default()
     },
     Checkbox {checked},
+    TabIndex(0),
     children![(
       Node {
         width: Val::Px(16.0),

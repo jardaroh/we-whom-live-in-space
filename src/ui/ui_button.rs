@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::input_focus::tab_navigation::TabIndex;
 use super::ui_theme::Theme;
 
 pub fn button(
@@ -16,6 +17,7 @@ pub fn button(
       ..default()
     },
     BackgroundColor(theme.color_default),
+    TabIndex(0),
     children![(
       Text(text.to_string()),
       TextColor(theme.color_primary.into()),
