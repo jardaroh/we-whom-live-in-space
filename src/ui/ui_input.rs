@@ -6,7 +6,10 @@ use bevy::input::{
     KeyboardInput,
   },
 };
-use bevy::input_focus::tab_navigation::TabIndex;
+use bevy::input_focus::{
+  InputFocus,
+  tab_navigation::TabIndex,
+};
 use super::ui_theme::Theme;
 
 #[derive(Component)]
@@ -34,12 +37,26 @@ pub fn text_input(
   )
 }
 
-pub fn text_input_system(
-  mut query: Query<(&mut TextInput, &mut Text, &Interaction), With<TextInput>>,
-  mut keyboard_events: EventReader<KeyboardInput>,
+pub fn text_input_click_system(
+  mut query: Query<(Entity, &Interaction), (Changed<Interaction>, With<TextInput>)>,
+  mut input_focus: ResMut<InputFocus>,
 ) {
-  for (mut text_input, mut text, interaction) in query.iter_mut() {
-    if *interaction != Interaction::Pressed {
+  for (entity, interaction) in query.iter_mut() {
+    if *interaction == Interaction::Pressed {
+      println!("Text input clicked via Interaction: {:?}", entity);
+      input_focus.set(entity);
+    }
+  }
+}
+
+pub fn text_input_system(
+  mut query: Query<(Entity, &mut TextInput, &mut Text), With<TextInput>>,
+  mut keyboard_events: EventReader<KeyboardInput>,
+  input_focus: Res<InputFocus>,
+) {
+  for (entity, mut text_input, mut text) in query.iter_mut() {
+    // Check if this specific entity is focused
+    if input_focus.get() != Some(entity) {
       continue;
     }
 
@@ -52,7 +69,7 @@ pub fn text_input_system(
         Key::Backspace => {
           if !text_input.value.is_empty() {
             text_input.value.pop();
-
+            text.0 = text_input.value.clone();
           }
         },
         Key::Character(input) => {
