@@ -4,57 +4,44 @@ use bevy::{
 
 mod constants;
 
-mod resources {
-  pub mod theme;
-}
+mod ui;
 
-mod ui {
-  pub mod button;
-  pub mod layout;
-  pub mod main_menu;
-}
+use ui::ui_theme::Theme;
+use ui::ui_plugin::ui_plugin;
+use ui::ui_button::button;
+use ui::ui_checkbox::checkbox;
 
-use constants::{
-  SizingMode,
-};
-use crate::resources::theme::Theme;
-use crate::ui::button::{button, button_system};
-use crate::ui::layout::grid;
-use crate::ui::main_menu::main_menu;
-
-// Define game states
-#[derive(States, Debug, Clone, Copy, Eq, PartialEq, Hash, Default)]
-pub enum GameState {
-  #[default]
-  MainMenu,
-  InGame,
-}
-
-fn setup_theme(mut commands: Commands, assets: Res<AssetServer>) {
-  commands.insert_resource(Theme {
-    font: assets.load("fonts/FiraSans-Bold.ttf"),
-    ..Default::default()
-  });
-}
-
-fn setup(mut commands: Commands, assets: Res<AssetServer>) {
-  commands.spawn(Camera2d);
-}
-
-fn setup_ui(mut commands: Commands, assets: Res<AssetServer>, theme: Res<Theme>) {
-  commands.spawn(main_menu(
-    &assets,
-    &theme,
+fn setup_ui_test(mut commands: Commands, theme: Res<Theme>) {
+  commands.spawn((
+    Node {
+      display: Display::Grid,
+      grid_template_columns: vec![GridTrack::min_content(); 1],
+      grid_template_rows: vec![GridTrack::min_content(); 3],
+      ..default()
+    },
+    children![
+      button(
+        &theme,
+        "Click Me",
+        (Val::Px(200.0), Val::Px(50.0)),
+      ),
+      checkbox(
+        &theme,
+        false,
+      ),
+      checkbox(
+        &theme,
+        true,
+      ),
+    ],
   ));
 }
 
 fn main() {
   App::new()
     .add_plugins(DefaultPlugins)
-    .init_state::<GameState>()
-    .add_systems(PreStartup, setup_theme)
-    .add_systems(Startup, setup)
-    .add_systems(Startup, setup_ui)
-    .add_systems(Update, button_system)
+    .add_plugins(ui_plugin)
+    .add_systems(Startup, setup_ui_test)
+    
     .run();
 }
