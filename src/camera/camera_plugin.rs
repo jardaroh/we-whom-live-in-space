@@ -1,4 +1,6 @@
-use bevy::{log::tracing_subscriber::field::debug, prelude::*};
+use bevy::{
+  prelude::*,
+};
 
 use crate::camera::camera::{
   camera_setup,

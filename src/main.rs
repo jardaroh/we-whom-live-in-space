@@ -59,7 +59,6 @@ pub fn setup_camera_test(
   mut commands: Commands,
   mut meshes: ResMut<Assets<Mesh>>,
   mut materials: ResMut<Assets<StandardMaterial>>,
-  asset_server: Res<AssetServer>,
 ) {
   let cube_mesh = meshes.add(Cuboid::new(5.0, 1.0, 1.0));
   commands.spawn((
@@ -86,7 +85,7 @@ pub fn setup_camera_test(
 fn main() {
   App::new()
     .add_plugins(DefaultPlugins)
-    .insert_resource(WinitSettings::desktop_app())
+    .insert_resource(WinitSettings::default())
     .add_plugins((
       FrameTimeDiagnosticsPlugin::default(),
       LogDiagnosticsPlugin::default(),
