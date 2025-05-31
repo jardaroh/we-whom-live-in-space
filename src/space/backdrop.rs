@@ -29,11 +29,11 @@ pub fn setup_backdrop(
 ) {
   let skybox_mesh = meshes.add(Mesh::from(Cuboid::new(1000.0, 1000.0, 1000.0)));
 
-  // commands.spawn((
-  //   Mesh3d(skybox_mesh),
-  //   MeshMaterial3d(materials.add(BackdropMaterial {})),
-  //   Transform::from_scale(Vec3::splat(-1.0)),
-  // ));
+  commands.spawn((
+    Mesh3d(skybox_mesh),
+    MeshMaterial3d(materials.add(BackdropMaterial {})),
+    Transform::from_scale(Vec3::splat(-1.0)),
+  ));
 }
 
 pub fn backdrop_system(
