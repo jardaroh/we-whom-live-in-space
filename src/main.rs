@@ -60,7 +60,7 @@ pub fn setup_camera_test(
   mut materials: ResMut<Assets<StandardMaterial>>,
   asset_server: Res<AssetServer>,
 ) {
-  let cube_mesh = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
+  let cube_mesh = meshes.add(Cuboid::new(5.0, 1.0, 1.0));
   commands.spawn((
     Mesh3d(cube_mesh),
     MeshMaterial3d(materials.add(StandardMaterial {
