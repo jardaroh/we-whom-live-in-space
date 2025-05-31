@@ -14,7 +14,6 @@ pub fn focus_system(
   theme: Res<Theme>,
 ) {
   if focus.is_changed() {
-    println!("Focus changed: {:?}", focus.0);
     for element in query.iter_mut() {
       if focus.0 == Some(element) {
         commands.entity(element).insert(Outline {

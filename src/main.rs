@@ -7,12 +7,18 @@ use bevy::{
 mod constants;
 
 mod ui;
+mod camera;
 
 use ui::ui_theme::Theme;
 use ui::ui_plugin::ui_plugin;
 use ui::ui_button::button;
 use ui::ui_checkbox::checkbox;
 use ui::ui_input::text_input;
+
+use camera::camera_plugin::camera_plugin;
+
+#[derive(Component)]
+struct Ship;
 
 fn setup_ui_test(mut commands: Commands, theme: Res<Theme>) {
   commands.spawn((
@@ -46,12 +52,46 @@ fn setup_ui_test(mut commands: Commands, theme: Res<Theme>) {
   ));
 }
 
+pub fn setup_camera_test(
+  mut commands: Commands,
+  mut meshes: ResMut<Assets<Mesh>>,
+  mut materials: ResMut<Assets<StandardMaterial>>,
+  asset_server: Res<AssetServer>,
+) {
+  let cube_mesh = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
+  commands.spawn((
+    Mesh3d(cube_mesh),
+    MeshMaterial3d(materials.add(StandardMaterial {
+      base_color: Srgba::hex("#ffd891").unwrap().into(),
+      metallic: 0.25,
+      perceptual_roughness: 0.25,
+      ..default()
+    })),
+    Transform::from_xyz(0.0, 0.0, 0.0),
+    Ship,
+  ));
+
+  commands.spawn((
+    DirectionalLight {
+      illuminance: 1_5000.0,
+      ..default()
+    },
+    Transform::from_xyz(50.0, 50.0, 50.0).looking_at(Vec3::ZERO, Vec3::Y),
+  ));
+}
+
 fn main() {
   App::new()
     .add_plugins(DefaultPlugins)
     .insert_resource(WinitSettings::desktop_app())
-    .add_plugins(ui_plugin)
-    .add_systems(Startup, setup_ui_test)
+    .add_plugins((
+      ui_plugin,
+      camera_plugin,
+    ))
+    .add_systems(Startup, (
+      setup_ui_test,
+      setup_camera_test,
+    ))
     
     .run();
 }
