@@ -2,6 +2,7 @@ use bevy::{
   prelude::*,
   winit::WinitSettings,
   input_focus::tab_navigation::TabGroup,
+  diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin}
 };
 
 mod constants;
@@ -87,6 +88,8 @@ fn main() {
     .add_plugins(DefaultPlugins)
     .insert_resource(WinitSettings::desktop_app())
     .add_plugins((
+      FrameTimeDiagnosticsPlugin::default(),
+      LogDiagnosticsPlugin::default(),
       ui_plugin,
       camera_plugin,
       space_plugin,
