@@ -8,14 +8,16 @@ mod constants;
 
 mod ui;
 mod camera;
+mod space;
 
 use ui::ui_theme::Theme;
-use ui::ui_plugin::ui_plugin;
 use ui::ui_button::button;
 use ui::ui_checkbox::checkbox;
 use ui::ui_input::text_input;
 
+use ui::ui_plugin::ui_plugin;
 use camera::camera_plugin::camera_plugin;
+use space::space_plugin::space_plugin;
 
 #[derive(Component)]
 struct Ship;
@@ -87,6 +89,7 @@ fn main() {
     .add_plugins((
       ui_plugin,
       camera_plugin,
+      space_plugin,
     ))
     .add_systems(Startup, (
       setup_ui_test,

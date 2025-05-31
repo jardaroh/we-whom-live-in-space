@@ -40,6 +40,12 @@ pub fn camera_setup(
       Camera3d {
         ..default()
       },
+      Projection::from(PerspectiveProjection {
+        fov: 60.0_f32.to_radians(),
+        near: 0.1,
+        far: 1000.0,
+        ..default()
+      }),
       Transform::from_xyz(0.0, 0.0, 10.0)
         .looking_at(Vec3::ZERO, Vec3::Y),
     ));
@@ -55,7 +61,6 @@ pub fn orbit_camera_system(
   ship_query: Query<&Transform, (With<Ship>, Without<CameraTarget>)>,
 ) {
   let total_motion: Vec2 = evr_motion.read().map(|e| e.delta).sum();
-  //total_motion.y = -total_motion.y; // Invert Y axis for orbiting
 
   for (orbit_camera, mut camera_transform) in camera_query.iter_mut() {
     if let Ok(mut target_transform) = target_query.single_mut() {
@@ -68,7 +73,7 @@ pub fn orbit_camera_system(
         pitch = pitch.clamp(-FRAC_PI_2 * 0.5, FRAC_PI_2 * 0.5);
         yaw = yaw % TAU;
 
-        let raw_lerp_factor = (50.0 * time.delta_secs()).min(1.0);
+        let raw_lerp_factor = (50.0 * time.delta_secs()).min(0.1);
         let lerp_factor = EaseFunction::QuadraticInOut.sample_clamped(raw_lerp_factor);
 
         euler.0 = euler.0.lerp(yaw, lerp_factor);
