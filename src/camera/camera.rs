@@ -64,6 +64,11 @@ pub fn camera_setup(
   commands.spawn((
     Name::new("Camera"),
     Camera3d::default(),
+      Projection::from(PerspectiveProjection {
+      fov: 60.0_f32.to_radians(),
+      ..default()
+    }),
+
     AngularVelocity::default(),
     CameraRotation::default(),
     Transform::from_xyz(0.0, 0.0, 20.0)
