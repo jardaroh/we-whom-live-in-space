@@ -7,7 +7,6 @@ use bevy::{
   },
 };
 use super::ui_theme::Theme;
-use super::ui_camera::setup_ui_camera;
 use super::ui_button::button_system;
 use super::ui_checkbox::checkbox_system;
 use super::ui_input::{
@@ -27,7 +26,6 @@ pub fn ui_plugin(app: &mut App) {
     ))
     .init_resource::<Theme>()
     .init_resource::<InputFocus>()
-    .add_systems(Startup, setup_ui_camera)
     .add_systems(Update, (
       button_system,
       checkbox_system,

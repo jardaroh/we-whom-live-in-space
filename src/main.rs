@@ -76,7 +76,7 @@ pub fn setup_camera_test(
     Mesh3d(meshes.add(Sphere::new(1.0))),
     MeshMaterial3d(materials.add(StandardMaterial {
       base_color: Srgba::hex("#ff6f61").unwrap().into(),
-      emissive: LinearRgba::rgb(0.0, 0.0, 150.0),
+      emissive: LinearRgba::rgb(1000.0, 1000.0, 1000.0),
       metallic: 0.5,
       perceptual_roughness: 0.5,
       ..default()

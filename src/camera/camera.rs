@@ -2,7 +2,7 @@ use std::{f32::consts::{FRAC_PI_2, TAU}, ops::Range};
 use bevy::{core_pipeline::{
   bloom::{Bloom, BloomPrefilter},
   tonemapping::Tonemapping,
-}, input::mouse::{AccumulatedMouseMotion, MouseWheel}, prelude::*, window::PrimaryWindow};
+}, input::mouse::{AccumulatedMouseMotion, MouseWheel}, prelude::*, render::{camera::CameraOutputMode, render_resource::BlendState}, window::PrimaryWindow};
 
 use crate::Ship;
 
@@ -73,13 +73,14 @@ pub fn camera_setup(
   commands.spawn((
     Name::new("Camera"),
     Camera3d::default(),
-    // Projection::from(PerspectiveProjection {
-    //   fov: 60.0_f32.to_radians(),
-    //   ..default()
-    // }),
+    Projection::from(PerspectiveProjection {
+      fov: 60.0_f32.to_radians(),
+      ..default()
+    }),
     Camera {
       hdr: true,
-      clear_color: ClearColorConfig::Custom(Color::srgba(0.0, 0.0, 0.0, 1.0)),
+      msaa_writeback: false,
+      clear_color: ClearColorConfig::Custom(Color::BLACK),
       ..default()
     },
 
@@ -89,13 +90,13 @@ pub fn camera_setup(
       .looking_at(Vec3::ZERO, Vec3::Y),
 
     Bloom {
-      intensity: 0.9,
-      low_frequency_boost: 0.5,
+      intensity: 0.05,
+      low_frequency_boost: 0.1,
       low_frequency_boost_curvature: 0.95,
       high_pass_frequency: 0.2,
       prefilter: BloomPrefilter {
-        threshold: 0.1,
-        threshold_softness: 0.8,
+        threshold: 0.7,
+        threshold_softness: 0.5,
       },
       composite_mode: bevy::core_pipeline::bloom::BloomCompositeMode::Additive,
       ..default()
