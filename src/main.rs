@@ -76,6 +76,17 @@ pub fn setup_camera_test(
   ));
 
   commands.spawn((
+    Mesh3d(meshes.add(Sphere::new(1.0))),
+    MeshMaterial3d(materials.add(StandardMaterial {
+      base_color: Srgba::hex("#ff6f61").unwrap().into(),
+      metallic: 0.5,
+      perceptual_roughness: 0.5,
+      ..default()
+    })),
+    Transform::from_xyz(0.0, 8.0, 0.0),
+  ));
+
+  commands.spawn((
     DirectionalLight {
       illuminance: 1_5000.0,
       ..default()

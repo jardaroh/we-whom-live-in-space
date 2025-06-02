@@ -15,10 +15,17 @@ pub fn setup_mesh_utils_sandbox(
     &mut commands,
     &mut meshes,
     &mut materials,
-    vec![
-      Transform::from_xyz(0.0, 0.0, 0.0),
-      Transform::from_xyz(1.0, 1.0, 0.0),
-      Transform::from_xyz(2.0, 0.0, 0.0),
-    ],
+    {
+      let radius = 3.0;
+      let num_points = 64; // Points around the circle
+      (0..=num_points) // Note the `=` to include the closing point
+        .map(|i| {
+          let angle = (i as f32) * 2.0 * std::f32::consts::PI / (num_points as f32);
+          let x = radius * angle.cos();
+          let z = radius * angle.sin();
+          Transform::from_xyz(x, 0.0, z)
+        })
+        .collect::<Vec<_>>()
+    },
   );
 }
