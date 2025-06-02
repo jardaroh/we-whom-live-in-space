@@ -9,18 +9,27 @@ use bevy::{
 
 use super::LineMaterial;
 
+#[derive(Bundle, Default)]
+pub struct LineMeshBundle {
+  pub mesh: Mesh3d,
+  pub material: MeshMaterial3d<ExtendedMaterial<StandardMaterial, LineMaterial>>,
+  pub transform: Transform,
+}
+
 pub fn from_transforms(
-  commands: &mut Commands,
   meshes: &mut ResMut<Assets<Mesh>>,
   materials: &mut ResMut<Assets<ExtendedMaterial<StandardMaterial, LineMaterial>>>,
   points: Vec<Transform>,
-) {
+) -> LineMeshBundle {
   let mut mesh = Mesh::new(PrimitiveTopology::LineStrip, RenderAssetUsages::all());
-  mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, points.iter().map(|t| t.translation).collect::<Vec<_>>());
+  mesh.insert_attribute(
+    Mesh::ATTRIBUTE_POSITION,
+    points.iter().map(|t| t.translation).collect::<Vec<_>>(),
+  );
 
-  commands.spawn((
-    Mesh3d(meshes.add(mesh)),
-    MeshMaterial3d(materials.add(ExtendedMaterial {
+  LineMeshBundle {
+    mesh: Mesh3d(meshes.add(mesh)),
+    material: MeshMaterial3d(materials.add(ExtendedMaterial {
       base: StandardMaterial {
         emissive: LinearRgba::rgb(1.2, 1.2, 1.4),
         ..default()
@@ -29,6 +38,6 @@ pub fn from_transforms(
         stroke_width: 1, // Set your desired default value here
       },
     })),
-    Transform::from_xyz(0.0, 0.0, 0.0),
-  ));
+    transform: Transform::from_xyz(0.0, 0.0, 0.0),
+  }
 }

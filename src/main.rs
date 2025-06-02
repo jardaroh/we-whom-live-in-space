@@ -1,6 +1,11 @@
 use bevy::{
-  core_pipeline::bloom::{Bloom, BloomPrefilter}, diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin}, input_focus::tab_navigation::TabGroup, prelude::*, winit::WinitSettings
+  diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
+  input_focus::tab_navigation::TabGroup,
+  prelude::*,
+  winit::WinitSettings,
 };
+// use rand crate for random number generation
+use rand::Rng;
 
 mod constants;
 
@@ -8,6 +13,7 @@ mod ui;
 mod camera;
 mod space;
 mod mesh_utils;
+mod movement;
 
 use ui::ui_theme::Theme;
 use ui::ui_button::button;
@@ -21,6 +27,9 @@ use mesh_utils::mesh_utils_plugin;
 
 #[derive(Component)]
 struct Ship;
+
+#[derive(Component)]
+struct Asteroid;
 
 fn setup_ui_test(mut commands: Commands, theme: Res<Theme>) {
   commands.spawn((
@@ -59,7 +68,7 @@ pub fn setup_camera_test(
   mut meshes: ResMut<Assets<Mesh>>,
   mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-  let cube_mesh = meshes.add(Cuboid::new(5.0, 1.0, 1.0));
+  let cube_mesh = meshes.add(Cuboid::new(1.0, 1.0, 5.0));
   commands.spawn((
     Mesh3d(cube_mesh),
     MeshMaterial3d(materials.add(StandardMaterial {
@@ -73,36 +82,40 @@ pub fn setup_camera_test(
   ));
 
   commands.spawn((
-    Mesh3d(meshes.add(Sphere::new(1.0))),
-    MeshMaterial3d(materials.add(StandardMaterial {
-      base_color: Srgba::hex("#ff6f61").unwrap().into(),
-      emissive: LinearRgba::rgb(1000.0, 1000.0, 1000.0),
-      metallic: 0.5,
-      perceptual_roughness: 0.5,
-      ..default()
-    })),
-    Transform::from_xyz(0.0, 8.0, 0.0),
-    Bloom {
-      intensity: 1.0,
-      low_frequency_boost: 0.5,
-      low_frequency_boost_curvature: 0.95,
-      high_pass_frequency: 0.2,
-      prefilter: BloomPrefilter {
-        threshold: 0.1,
-        threshold_softness: 0.8,
-      },
-      composite_mode: bevy::core_pipeline::bloom::BloomCompositeMode::Additive,
-      ..default()
-    },
-  ));
-
-  commands.spawn((
     DirectionalLight {
       illuminance: 1_5000.0,
       ..default()
     },
     Transform::from_xyz(50.0, 50.0, 50.0).looking_at(Vec3::ZERO, Vec3::Y),
   ));
+
+  // Spawn asteroids
+  let sphere_mesh = meshes.add(Sphere::new(1.0));
+  for _ in 0..300 {
+    let x = (rand::random::<f32>() - 0.5) * 500.0;
+    let y = (rand::random::<f32>() - 0.5) * 500.0;
+    let z = (rand::random::<f32>() - 0.5) * 500.0;
+    let scale = 0.5 + rand::random::<f32>() * 2.0;
+    
+    let color = match rand::random::<u8>() % 4 {
+      0 => Srgba::hex("#8c8c8c").unwrap(),  // Gray
+      1 => Srgba::hex("#a67c52").unwrap(),  // Brown
+      2 => Srgba::hex("#5c4033").unwrap(),  // Dark brown
+      _ => Srgba::hex("#666666").unwrap(),  // Darker gray
+    };
+
+    commands.spawn((
+      Mesh3d(sphere_mesh.clone()),
+      MeshMaterial3d(materials.add(StandardMaterial {
+        base_color: color.into(),
+        metallic: 0.1,
+        perceptual_roughness: 0.9,
+        ..default()
+      })),
+      Transform::from_xyz(x, y, z).with_scale(Vec3::splat(scale)),
+      Asteroid,
+    ));
+  }
 }
 
 fn main() {
