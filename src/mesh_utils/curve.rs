@@ -22,7 +22,7 @@ pub fn from_transforms(
     Mesh3d(meshes.add(mesh)),
     MeshMaterial3d(materials.add(ExtendedMaterial {
       base: StandardMaterial {
-        emissive: LinearRgba::rgb(1000.0, 1000.0, 1000.0),
+        emissive: LinearRgba::rgb(1.2, 1.2, 1.4),
         ..default()
       },
       extension: LineMaterial {

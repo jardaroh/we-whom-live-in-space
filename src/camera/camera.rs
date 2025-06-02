@@ -79,7 +79,6 @@ pub fn camera_setup(
     }),
     Camera {
       hdr: true,
-      msaa_writeback: false,
       clear_color: ClearColorConfig::Custom(Color::BLACK),
       ..default()
     },
@@ -88,19 +87,7 @@ pub fn camera_setup(
     CameraState::default(),
     Transform::from_xyz(0.0, 0.0, 20.0)
       .looking_at(Vec3::ZERO, Vec3::Y),
-
-    Bloom {
-      intensity: 0.05,
-      low_frequency_boost: 0.1,
-      low_frequency_boost_curvature: 0.95,
-      high_pass_frequency: 0.2,
-      prefilter: BloomPrefilter {
-        threshold: 0.7,
-        threshold_softness: 0.5,
-      },
-      composite_mode: bevy::core_pipeline::bloom::BloomCompositeMode::Additive,
-      ..default()
-    },
+    Bloom::NATURAL,
     Tonemapping::TonyMcMapface,
   ));
 }
