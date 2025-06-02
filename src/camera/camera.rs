@@ -1,5 +1,8 @@
 use std::{f32::consts::{FRAC_PI_2, TAU}, ops::Range};
-use bevy::{input::mouse::{AccumulatedMouseMotion, MouseWheel}, prelude::*, window::PrimaryWindow};
+use bevy::{core_pipeline::{
+  bloom::{Bloom, BloomPrefilter},
+  tonemapping::Tonemapping,
+}, input::mouse::{AccumulatedMouseMotion, MouseWheel}, prelude::*, window::PrimaryWindow};
 
 use crate::Ship;
 
@@ -70,15 +73,34 @@ pub fn camera_setup(
   commands.spawn((
     Name::new("Camera"),
     Camera3d::default(),
-      Projection::from(PerspectiveProjection {
-      fov: 60.0_f32.to_radians(),
+    // Projection::from(PerspectiveProjection {
+    //   fov: 60.0_f32.to_radians(),
+    //   ..default()
+    // }),
+    Camera {
+      hdr: true,
+      clear_color: ClearColorConfig::Custom(Color::srgba(0.0, 0.0, 0.0, 1.0)),
       ..default()
-    }),
+    },
 
     AngularVelocity::default(),
     CameraState::default(),
     Transform::from_xyz(0.0, 0.0, 20.0)
       .looking_at(Vec3::ZERO, Vec3::Y),
+
+    Bloom {
+      intensity: 0.9,
+      low_frequency_boost: 0.5,
+      low_frequency_boost_curvature: 0.95,
+      high_pass_frequency: 0.2,
+      prefilter: BloomPrefilter {
+        threshold: 0.1,
+        threshold_softness: 0.8,
+      },
+      composite_mode: bevy::core_pipeline::bloom::BloomCompositeMode::Additive,
+      ..default()
+    },
+    Tonemapping::TonyMcMapface,
   ));
 }
 

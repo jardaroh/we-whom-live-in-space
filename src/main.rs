@@ -1,8 +1,5 @@
 use bevy::{
-  prelude::*,
-  winit::WinitSettings,
-  input_focus::tab_navigation::TabGroup,
-  diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin}
+  core_pipeline::bloom::{Bloom, BloomPrefilter}, diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin}, input_focus::tab_navigation::TabGroup, prelude::*, winit::WinitSettings
 };
 
 mod constants;
@@ -79,11 +76,24 @@ pub fn setup_camera_test(
     Mesh3d(meshes.add(Sphere::new(1.0))),
     MeshMaterial3d(materials.add(StandardMaterial {
       base_color: Srgba::hex("#ff6f61").unwrap().into(),
+      emissive: LinearRgba::rgb(0.0, 0.0, 150.0),
       metallic: 0.5,
       perceptual_roughness: 0.5,
       ..default()
     })),
     Transform::from_xyz(0.0, 8.0, 0.0),
+    Bloom {
+      intensity: 1.0,
+      low_frequency_boost: 0.5,
+      low_frequency_boost_curvature: 0.95,
+      high_pass_frequency: 0.2,
+      prefilter: BloomPrefilter {
+        threshold: 0.1,
+        threshold_softness: 0.8,
+      },
+      composite_mode: bevy::core_pipeline::bloom::BloomCompositeMode::Additive,
+      ..default()
+    },
   ));
 
   commands.spawn((

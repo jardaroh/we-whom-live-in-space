@@ -21,7 +21,10 @@ pub fn from_transforms(
   commands.spawn((
     Mesh3d(meshes.add(mesh)),
     MeshMaterial3d(materials.add(ExtendedMaterial {
-      base: StandardMaterial::default(),
+      base: StandardMaterial {
+        emissive: LinearRgba::rgb(1000.0, 1000.0, 1000.0),
+        ..default()
+      },
       extension: LineMaterial {
         stroke_width: 1, // Set your desired default value here
       },
