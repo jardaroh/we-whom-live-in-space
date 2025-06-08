@@ -1,0 +1,15 @@
+[package]
+name = "we-whom-lives-in-space-db"
+version = "0.1.0"
+edition = "2024"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+spacetimedb = "1.1.2"
+shared.workspace = true
+log = "0.4"
+time = "0.3.41"

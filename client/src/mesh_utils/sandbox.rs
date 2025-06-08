@@ -19,7 +19,7 @@ pub fn setup_mesh_utils_sandbox(
   mut materials: ResMut<Assets<ExtendedMaterial<StandardMaterial, LineMaterial>>>,
 ) {
   let base_radius = 4.0;
-  let num_points = 64; // Points around the circle
+  let num_points = 6; // Points around the circle
   let pulse_frequency = 1.0; // Pulses per second
   let pulse_amplitude = 0.5; // Amplitude of the pulse
   
