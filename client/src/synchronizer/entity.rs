@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use crate::spacetime_bindings::{
   Entity as DbEntity, EntityType, DVec3, DQuat,
 };
-use crate::components::{Ship, Mass, MaxThrust, Acceleration};
+use crate::components::{Ship, Mass, MaxThrust, Acceleration, RotationInterpolation};
 
 /// Resource to track mapping between SpacetimeDB entity IDs and Bevy entity IDs
 #[derive(Resource, Default)]
@@ -201,20 +201,58 @@ fn update_entity_transform(
   bevy_entity: Entity,
   db_entity: &DbEntity,
   transform_query: &mut Query<&mut Transform>,
+  interpolation_query: &mut Query<&mut RotationInterpolation>,
+  commands: &mut Commands,
+  time: &Time,
 ) -> bool {
   if let Ok(mut transform) = transform_query.get_mut(bevy_entity) {
     let new_position = dvec3_to_vec3(&db_entity.relative_position);
     transform.translation = new_position;
 
-    // Update rotation if needed
-    let rotation = dquat_to_quat(&db_entity.relative_rotation);
-    transform.rotation = rotation;
+    // Handle rotation interpolation
+    let new_rotation = dquat_to_quat(&db_entity.relative_rotation);
+    let current_time = time.elapsed().as_secs_f64();
+    let server_update_interval = 0.05; // 50ms = 20Hz server updates
+    
+    if let Ok(mut interpolation) = interpolation_query.get_mut(bevy_entity) {
+      // Update existing interpolation with new target
+      interpolation.start_rotation = transform.rotation;
+      interpolation.target_rotation = new_rotation;
+      interpolation.start_time = current_time;
+      interpolation.duration = server_update_interval;
+    } else {
+      // Add interpolation component if it doesn't exist
+      commands.entity(bevy_entity).insert(RotationInterpolation::new(
+        transform.rotation,
+        new_rotation,
+        current_time,
+        server_update_interval,
+      ));
+    }
 
-    debug!("Updated entity {} position to {:?}", db_entity.designation, new_position);
+    debug!("Updated entity {} position to {:?}, set up rotation interpolation", db_entity.designation, new_position);
     true
   } else {
     warn!("Failed to update transform for entity {}: Bevy entity not found", db_entity.designation);
     false
+  }
+}
+
+/// System that applies smooth rotation interpolation every frame
+pub fn rotation_interpolation_system(
+  mut query: Query<(&mut Transform, &mut RotationInterpolation)>,
+  time: Res<Time>,
+) {
+  let current_time = time.elapsed().as_secs_f64();
+  
+  for (mut transform, interpolation) in query.iter_mut() {
+    if interpolation.is_complete(current_time) {
+      // Interpolation is complete, snap to final rotation
+      transform.rotation = interpolation.target_rotation;
+    } else {
+      // Apply smooth interpolation
+      transform.rotation = interpolation.get_rotation_at_time(current_time);
+    }
   }
 }
 
@@ -227,6 +265,8 @@ pub fn sync_entities_system(
   mut update_events: EventReader<UpdateEvent<DbEntity>>,
   mut delete_events: EventReader<DeleteEvent<DbEntity>>,
   mut transform_query: Query<&mut Transform>,
+  mut interpolation_query: Query<&mut RotationInterpolation>,
+  time: Res<Time>,
 ) {
   // Debug logging to see if events are received
   let insert_count = insert_events.len();
@@ -265,7 +305,7 @@ pub fn sync_entities_system(
     
     if let Some(bevy_entity) = entity_mapping.get_bevy_entity(db_entity.id) {
       // Try to update the transform
-      if !update_entity_transform(bevy_entity, db_entity, &mut transform_query) {
+      if !update_entity_transform(bevy_entity, db_entity, &mut transform_query, &mut interpolation_query, &mut commands, &time) {
         // Transform update failed - this could be a timing issue where the entity
         // was just spawned and Transform component isn't ready yet
         // We'll keep the mapping and let future updates try again

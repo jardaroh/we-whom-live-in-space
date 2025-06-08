@@ -98,7 +98,6 @@ pub struct Entity {
   relative_rotation: DQuat,
   relative_rotational_velocity: DVec3,
   mass: f64,
-  moment_of_inertia: DVec3, // pitch (x), yaw (y), roll (z)
   max_impulse: DVec3, // main thrust (x), retro thrust (y), nav thrust (z)
   #[index(btree)]
   entity_type: EntityType,
@@ -203,12 +202,22 @@ fn test_reducer(
       
       // Extract ship's physical properties
       let mass = ship.mass;
-      let moment_of_inertia = &ship.moment_of_inertia;
       let nav_thrust = ship.max_impulse.z; // Navigation (rotational) thrust
       
-      // Calculate rotational acceleration capability (torque / moment of inertia)
-      // Using the average moment of inertia for simplicity
-      let avg_moment_of_inertia = (moment_of_inertia.x + moment_of_inertia.y + moment_of_inertia.z) / 3.0;
+      // Calculate moment of inertia from ship mass (assuming reasonable ship dimensions)
+      // For a ship-like object, moment of inertia is typically mass * radius^2
+      // Assuming ship dimensions roughly 10m x 8m x 6m (length x width x height)
+      let ship_length = 10.0; // meters
+      let ship_width = 8.0;   // meters
+      let ship_height = 6.0;  // meters
+      
+      // Calculate moment of inertia for each axis (treating ship as a box)
+      let moment_pitch = mass * (ship_width * ship_width + ship_height * ship_height) / 12.0; // rotation around X (pitch)
+      let moment_yaw = mass * (ship_length * ship_length + ship_height * ship_height) / 12.0; // rotation around Y (yaw)
+      let moment_roll = mass * (ship_length * ship_length + ship_width * ship_width) / 12.0; // rotation around Z (roll)
+      
+      // Use average moment of inertia for general rotation calculations
+      let avg_moment_of_inertia = (moment_pitch + moment_yaw + moment_roll) / 3.0;
       let max_angular_acceleration = nav_thrust / avg_moment_of_inertia; // rad/s²
       
       // Current angular velocity magnitude
@@ -230,8 +239,10 @@ fn test_reducer(
       // Halfway point for acceleration/deceleration switch
       let halfway_point = rotation_diff / 2.0;
       
-      log::info!("Ship mass: {:.1} kg, Avg MOI: {:.1} kg⋅m², Nav thrust: {:.1} N", 
+      log::info!("Ship mass: {:.1} kg, Calculated avg MOI: {:.1} kg⋅m², Nav thrust: {:.1} N", 
                 mass, avg_moment_of_inertia, nav_thrust);
+      log::info!("Ship dimensions: {:.1}m x {:.1}m x {:.1}m, MOI (pitch/yaw/roll): {:.1}/{:.1}/{:.1}", 
+                ship_length, ship_width, ship_height, moment_pitch, moment_yaw, moment_roll);
       log::info!("Max angular accel: {:.4} rad/s², Current speed: {:.4} rad/s", 
                 max_angular_acceleration, current_angular_speed);
       log::info!("Stop distance: {:.4} rad, Halfway: {:.4} rad", stop_distance, halfway_point);
@@ -261,8 +272,9 @@ fn test_reducer(
       
       // Apply rotation step toward target
       let new_quat = if rotation_diff < target_tolerance {
-        // Close enough, snap to target
-        target_quat.clone()
+        // Very close to target - use a small final slerp instead of snapping
+        let final_t = (rotation_speed / rotation_diff).min(1.0);
+        quat_slerp(&current_quat, &target_quat, final_t)
       } else {
         // Slerp (spherical linear interpolation) toward target
         let t = rotation_speed / rotation_diff; // Proportion of remaining rotation to complete this step
@@ -511,8 +523,7 @@ fn init(
     relative_rotational_velocity: DVec3 { x: 0.0, y: 0.0, z: 0.0 },
     entity_type: EntityType::Ship,
     mass: 1000.0, // 1 ton
-    moment_of_inertia: DVec3 { x: 100.0, y: 100.0, z: 50.0 }, // pitch, yaw, roll
-    max_impulse: DVec3 { x: 10000.0, y: 5000.0, z: 2000.0 }, // main, retro, nav thrust
+    max_impulse: DVec3 { x: 50000.0, y: 25000.0, z: 800.0 }, // main, retro, nav thrust (reduced nav thrust for slower rotation)
   });
 
   // Add a waypoint for the TestShip to fly to (requiring significant rotation)

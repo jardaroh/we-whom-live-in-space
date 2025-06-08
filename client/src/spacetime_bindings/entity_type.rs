@@ -20,7 +20,6 @@ pub struct Entity {
     pub relative_rotation: DQuat,
     pub relative_rotational_velocity: DVec3,
     pub mass: f64,
-    pub moment_of_inertia: DVec3,
     pub max_impulse: DVec3,
     pub entity_type: EntityType,
 }

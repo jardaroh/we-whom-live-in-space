@@ -11,7 +11,7 @@ mod waypoint;
 
 use crate::spacetime_bindings::*;
 
-use entity::{sync_entities_system, EntityMapping};
+use entity::{sync_entities_system, rotation_interpolation_system, EntityMapping};
 use waypoint::{sync_waypoints_system, WaypointMapping};
 
 pub fn synchronizer_plugin(app: &mut App) {
@@ -54,6 +54,7 @@ pub fn synchronizer_plugin(app: &mut App) {
       on_connected,
       sync_entities_system,
       sync_waypoints_system,
+      rotation_interpolation_system,
     ),
   );
 }
