@@ -2,6 +2,7 @@
 // WILL NOT BE SAVED. MODIFY TABLES IN YOUR MODULE SOURCE CODE INSTEAD.
 
 #![allow(unused, clippy::all)]
+use super::d_quat_type::DQuat;
 use super::d_vec_3_type::DVec3;
 use super::node_name_type::NodeName;
 use super::node_type::Node;

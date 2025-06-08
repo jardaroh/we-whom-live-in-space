@@ -6,6 +6,7 @@ use spacetimedb_sdk::__codegen::{self as __sdk, __lib, __sats, __ws};
 
 pub mod animation_counter_table;
 pub mod animation_counter_type;
+pub mod d_quat_type;
 pub mod d_vec_3_type;
 pub mod entity_table;
 pub mod entity_type;
@@ -16,9 +17,12 @@ pub mod node_type;
 pub mod test_reducer_reducer;
 pub mod test_reducer_schedule_table;
 pub mod test_reducer_schedule_type;
+pub mod waypoint_table;
+pub mod waypoint_type;
 
 pub use animation_counter_table::*;
 pub use animation_counter_type::AnimationCounter;
+pub use d_quat_type::DQuat;
 pub use d_vec_3_type::DVec3;
 pub use entity_table::*;
 pub use entity_type::Entity;
@@ -29,6 +33,8 @@ pub use node_type::Node;
 pub use test_reducer_reducer::{set_flags_for_test_reducer, test_reducer, TestReducerCallbackId};
 pub use test_reducer_schedule_table::*;
 pub use test_reducer_schedule_type::TestReducerSchedule;
+pub use waypoint_table::*;
+pub use waypoint_type::Waypoint;
 
 #[derive(Clone, PartialEq, Debug)]
 
@@ -81,6 +87,7 @@ pub struct DbUpdate {
     entity: __sdk::TableUpdate<Entity>,
     node: __sdk::TableUpdate<Node>,
     test_reducer_schedule: __sdk::TableUpdate<TestReducerSchedule>,
+    waypoint: __sdk::TableUpdate<Waypoint>,
 }
 
 impl TryFrom<__ws::DatabaseUpdate<__ws::BsatnFormat>> for DbUpdate {
@@ -98,6 +105,9 @@ impl TryFrom<__ws::DatabaseUpdate<__ws::BsatnFormat>> for DbUpdate {
                 "test_reducer_schedule" => {
                     db_update.test_reducer_schedule =
                         test_reducer_schedule_table::parse_table_update(table_update)?
+                }
+                "waypoint" => {
+                    db_update.waypoint = waypoint_table::parse_table_update(table_update)?
                 }
 
                 unknown => {
@@ -140,6 +150,9 @@ impl __sdk::DbUpdate for DbUpdate {
                 &self.test_reducer_schedule,
             )
             .with_updates_by_pk(|row| &row.scheduled_id);
+        diff.waypoint = cache
+            .apply_diff_to_table::<Waypoint>("waypoint", &self.waypoint)
+            .with_updates_by_pk(|row| &row.id);
 
         diff
     }
@@ -153,6 +166,7 @@ pub struct AppliedDiff<'r> {
     entity: __sdk::TableAppliedDiff<'r, Entity>,
     node: __sdk::TableAppliedDiff<'r, Node>,
     test_reducer_schedule: __sdk::TableAppliedDiff<'r, TestReducerSchedule>,
+    waypoint: __sdk::TableAppliedDiff<'r, Waypoint>,
 }
 
 impl __sdk::InModule for AppliedDiff<'_> {
@@ -177,6 +191,7 @@ impl<'r> __sdk::AppliedDiff<'r> for AppliedDiff<'r> {
             &self.test_reducer_schedule,
             event,
         );
+        callbacks.invoke_table_row_callbacks::<Waypoint>("waypoint", &self.waypoint, event);
     }
 }
 
@@ -756,5 +771,6 @@ impl __sdk::SpacetimeModule for RemoteModule {
         entity_table::register_table(client_cache);
         node_table::register_table(client_cache);
         test_reducer_schedule_table::register_table(client_cache);
+        waypoint_table::register_table(client_cache);
     }
 }

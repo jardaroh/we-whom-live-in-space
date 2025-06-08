@@ -5,7 +5,7 @@ use bevy_spacetimedb::{
 use std::collections::HashMap;
 
 use crate::spacetime_bindings::{
-  Entity as DbEntity, EntityType, DVec3,
+  Entity as DbEntity, EntityType, DVec3, DQuat,
 };
 use crate::components::{Ship, Mass, MaxThrust, Acceleration};
 
@@ -45,6 +45,11 @@ fn dvec3_to_vec3(dvec3: &DVec3) -> Vec3 {
   Vec3::new(dvec3.x as f32, dvec3.y as f32, dvec3.z as f32)
 }
 
+/// Convert SpacetimeDB DQuat to Bevy Quat
+fn dquat_to_quat(dquat: &DQuat) -> Quat {
+  Quat::from_xyzw(dquat.x as f32, dquat.y as f32, dquat.z as f32, dquat.w as f32)
+}
+
 /// Spawn a new entity based on database data
 fn spawn_entity(
   commands: &mut Commands,
@@ -57,22 +62,46 @@ fn spawn_entity(
 
   let entity = match db_entity.entity_type {
     EntityType::Ship => {
-      let cube_mesh = meshes.add(Cuboid::new(1.0, 1.0, 5.0));
-      commands.spawn((
-        Mesh3d(cube_mesh),
-        MeshMaterial3d(materials.add(StandardMaterial {
-          base_color: Srgba::hex("#ffd891").unwrap().into(),
-          metallic: 0.25,
-          perceptual_roughness: 0.25,
-          ..default()
-        })),
+      // Create the main ship body
+      let main_body_mesh = meshes.add(Cuboid::new(1.0, 1.0, 3.0));
+      let ship_material = materials.add(StandardMaterial {
+        base_color: Srgba::hex("#ffd891").unwrap().into(),
+        metallic: 0.25,
+        perceptual_roughness: 0.25,
+        ..default()
+      });
+      
+      // Create the forward indicator (a triangular prism pointing forward)
+      let indicator_mesh = meshes.add(Cuboid::new(0.5, 0.5, 1.5));
+      let indicator_material = materials.add(StandardMaterial {
+        base_color: Srgba::hex("#ff4444").unwrap().into(), // Red for forward direction
+        metallic: 0.5,
+        perceptual_roughness: 0.2,
+        ..default()
+      });
+      
+      // Spawn the main ship entity
+      let ship_entity = commands.spawn((
+        Mesh3d(main_body_mesh),
+        MeshMaterial3d(ship_material),
         transform,
         Ship,
         Mass(1000.0),
         MaxThrust(bevy::math::DVec3::new(1000.0, 1000.0, 1000.0)),
         Acceleration::default(),
         Name::new(format!("Ship: {}", db_entity.designation)),
-      )).id()
+      )).with_children(|parent| {
+        // Spawn the forward indicator as a child of the ship
+        // In Bevy, forward is -Z direction, so we position the indicator at negative Z
+        parent.spawn((
+          Mesh3d(indicator_mesh),
+          MeshMaterial3d(indicator_material),
+          Transform::from_xyz(0.0, 0.0, -2.25), // Position it at the front of the ship (negative Z is forward)
+          Name::new("Forward Indicator"),
+        ));
+      }).id();
+      
+      ship_entity
     },
     EntityType::Planet => {
       let sphere_mesh = meshes.add(Sphere::new(5.0));
@@ -178,8 +207,8 @@ fn update_entity_transform(
     transform.translation = new_position;
 
     // Update rotation if needed
-    let rotation = dvec3_to_vec3(&db_entity.relative_rotation);
-    transform.rotation = Quat::from_euler(EulerRot::XYZ, rotation.x, rotation.y, rotation.z);
+    let rotation = dquat_to_quat(&db_entity.relative_rotation);
+    transform.rotation = rotation;
 
     debug!("Updated entity {} position to {:?}", db_entity.designation, new_position);
     true

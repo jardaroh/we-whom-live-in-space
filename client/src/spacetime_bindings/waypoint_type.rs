@@ -4,23 +4,17 @@
 #![allow(unused, clippy::all)]
 use spacetimedb_sdk::__codegen::{self as __sdk, __lib, __sats, __ws};
 
-use super::d_quat_type::DQuat;
 use super::d_vec_3_type::DVec3;
-use super::node_name_type::NodeName;
 
 #[derive(__lib::ser::Serialize, __lib::de::Deserialize, Clone, PartialEq, Debug)]
 #[sats(crate = __lib)]
-pub struct Node {
+pub struct Waypoint {
     pub id: u64,
-    pub name: NodeName,
-    pub parent_id: Option<u64>,
-    pub node_position: DVec3,
-    pub node_velocity: DVec3,
-    pub node_rotation: DQuat,
-    pub node_rotational_velocity: DVec3,
-    pub orbit_progress: f64,
+    pub entity_id: u64,
+    pub target_position: DVec3,
+    pub order_index: u32,
 }
 
-impl __sdk::InModule for Node {
+impl __sdk::InModule for Waypoint {
     type Module = super::RemoteModule;
 }

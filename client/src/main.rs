@@ -16,6 +16,7 @@ pub use spacetime_bindings::Entity as SpacetimeEntityType;
 pub use spacetime_bindings::EntityType;
 pub use spacetime_bindings::NodeName;
 pub use spacetime_bindings::DVec3;
+pub use spacetime_bindings::DQuat;
 
 mod ui;
 mod camera;

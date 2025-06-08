@@ -4,6 +4,7 @@
 #![allow(unused, clippy::all)]
 use spacetimedb_sdk::__codegen::{self as __sdk, __lib, __sats, __ws};
 
+use super::d_quat_type::DQuat;
 use super::d_vec_3_type::DVec3;
 use super::entity_type_type::EntityType;
 use super::node_name_type::NodeName;
@@ -16,8 +17,11 @@ pub struct Entity {
     pub designation: String,
     pub relative_position: DVec3,
     pub relative_velocity: DVec3,
-    pub relative_rotation: DVec3,
+    pub relative_rotation: DQuat,
     pub relative_rotational_velocity: DVec3,
+    pub mass: f64,
+    pub moment_of_inertia: DVec3,
+    pub max_impulse: DVec3,
     pub entity_type: EntityType,
 }
 

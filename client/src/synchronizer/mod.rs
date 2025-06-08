@@ -7,10 +7,12 @@ use bevy_spacetimedb::{
 // };
 
 mod entity;
+mod waypoint;
 
 use crate::spacetime_bindings::*;
 
 use entity::{sync_entities_system, EntityMapping};
+use waypoint::{sync_waypoints_system, WaypointMapping};
 
 pub fn synchronizer_plugin(app: &mut App) {
   app.add_plugins(
@@ -38,17 +40,20 @@ pub fn synchronizer_plugin(app: &mut App) {
         tables!(
           entity,
           node,
+          waypoint,
         );
 
         register_reducers!();
       }}),
   );
   app.init_resource::<EntityMapping>()
+  .init_resource::<WaypointMapping>()
   .add_systems(
     Update,
     (
       on_connected,
       sync_entities_system,
+      sync_waypoints_system,
     ),
   );
 }
@@ -63,7 +68,12 @@ fn on_connected(
 
     stdb.subscribe()
       .on_applied(|_| info!("entity updated"))
-      .on_error(|_, err| error!("Error in subscription: {}", err))
+      .on_error(|_, err| error!("Error in entity subscription: {}", err))
       .subscribe("SELECT * FROM entity");
+      
+    stdb.subscribe()
+      .on_applied(|_| info!("waypoint updated"))
+      .on_error(|_, err| error!("Error in waypoint subscription: {}", err))
+      .subscribe("SELECT * FROM waypoint");
   }
 }
