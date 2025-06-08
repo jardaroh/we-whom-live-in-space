@@ -1,7 +1,7 @@
-use avian3d::parry::na::coordinates::X;
 use bevy::{math::DVec3, prelude::*};
 
 #[derive(Component)]
+#[allow(dead_code)]
 pub struct Acceleration {
   pub x: f64,
   pub y: f64,
@@ -19,13 +19,17 @@ impl Default for Acceleration {
 }
 
 #[derive(Component)]
+#[allow(dead_code)]
 pub struct Ship;
 
 #[derive(Component)]
+#[allow(dead_code)]
 pub struct PlayerControlled;
 
 #[derive(Component)]
+#[allow(dead_code)]
 pub struct Mass(pub f64);
 
 #[derive(Component)]
+#[allow(dead_code)]
 pub struct MaxThrust(pub DVec3);

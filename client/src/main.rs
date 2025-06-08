@@ -23,6 +23,7 @@ mod space;
 mod mesh_utils;
 mod movement;
 mod synchronizer;
+mod components;
 
 use ui::ui_theme::Theme;
 use ui::ui_button::button;
@@ -34,9 +35,7 @@ use camera::camera_plugin::camera_plugin;
 use space::space_plugin::space_plugin;
 use mesh_utils::mesh_utils_plugin;
 use synchronizer::synchronizer_plugin;
-
-#[derive(Component)]
-struct Ship;
+use components::{Ship, Acceleration};
 
 #[derive(Component)]
 struct Asteroid;

@@ -4,7 +4,7 @@ use bevy::{core_pipeline::{
   tonemapping::Tonemapping,
 }, input::mouse::{AccumulatedMouseMotion, MouseWheel}, prelude::*, render::{camera::CameraOutputMode, render_resource::BlendState}, window::PrimaryWindow};
 
-use crate::Ship;
+use crate::components::Ship;
 
 #[derive(Component)]
 pub struct AngularVelocity {

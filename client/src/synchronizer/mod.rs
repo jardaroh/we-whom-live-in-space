@@ -10,7 +10,7 @@ mod entity;
 
 use crate::spacetime_bindings::*;
 
-use entity::sync_entities_system;
+use entity::{sync_entities_system, EntityMapping};
 
 pub fn synchronizer_plugin(app: &mut App) {
   app.add_plugins(
@@ -43,7 +43,8 @@ pub fn synchronizer_plugin(app: &mut App) {
         register_reducers!();
       }}),
   );
-  app.add_systems(
+  app.init_resource::<EntityMapping>()
+  .add_systems(
     Update,
     (
       on_connected,
@@ -59,5 +60,10 @@ fn on_connected(
 ) {
   for _ in events.read() {
     info!("Connected to SpacetimeDB!");
+
+    stdb.subscribe()
+      .on_applied(|_| info!("entity updated"))
+      .on_error(|_, err| error!("Error in subscription: {}", err))
+      .subscribe("SELECT * FROM entity");
   }
 }
