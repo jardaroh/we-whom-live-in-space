@@ -305,13 +305,136 @@ fn test_reducer(
                   ship.relative_rotational_velocity.z);
       }
       
-      // Check if ship has successfully oriented to the waypoint
-      if rotation_diff < target_tolerance {
-        log::info!("Ship {} has reached target orientation! Creating new waypoint immediately...", ship.designation);
+      // MOVEMENT SYSTEM - Only move when properly oriented
+      let orientation_tolerance = 0.175; // ~10 degrees - close enough to start moving
+      let close_enough_to_move = rotation_diff < orientation_tolerance;
+      
+      if close_enough_to_move {
+        log::info!("Ship {} is oriented well enough to start moving (rotation diff: {:.3} rad)", 
+                  ship.designation, rotation_diff);
+        
+        // Calculate movement physics
+        let main_thrust = ship.max_impulse.x; // Forward thrust
+        let retro_thrust = ship.max_impulse.y; // Reverse thrust  
+        let main_acceleration = main_thrust / mass; // m/s²
+        let retro_acceleration = retro_thrust / mass; // m/s²
+        
+        // Current velocity components
+        let current_velocity = &ship.relative_velocity;
+        let current_speed = (current_velocity.x * current_velocity.x + 
+                            current_velocity.y * current_velocity.y + 
+                            current_velocity.z * current_velocity.z).sqrt();
+        
+        // Calculate stopping distance with current velocity and retro thrust
+        let stopping_time = if retro_acceleration > 0.0 {
+          current_speed / retro_acceleration
+        } else {
+          0.0
+        };
+        let stopping_distance = current_speed * stopping_time - 0.5 * retro_acceleration * stopping_time * stopping_time;
+        
+        log::info!("Movement: distance={:.1}m, stopping_dist={:.1}m, current_speed={:.2}m/s", 
+                  distance, stopping_distance, current_speed);
+        
+        // Improved movement logic with gentler physics
+        let max_cruise_speed = 2.0; // Maximum cruise speed (m/s) - much lower for smoother movement
+        let max_approach_speed = 1.0; // Maximum speed when close to waypoint (m/s)
+        let close_distance_threshold = 10.0; // Switch to approach mode when closer than this (m)
+        
+        // Determine current max speed based on distance
+        let current_max_speed = if distance < close_distance_threshold {
+          max_approach_speed
+        } else {
+          max_cruise_speed
+        };
+        
+        // Calculate desired speed based on distance - smooth curve
+        let desired_speed = if distance < 1.0 {
+          0.0 // Stop when very close
+        } else {
+          // Use smooth curve: speed increases with distance up to max
+          let speed_factor = (distance / 20.0).min(1.0); // Reaches max at 20m distance
+          current_max_speed * speed_factor
+        };
+        
+        // Determine thrust direction and magnitude based on current vs desired speed
+        let speed_error = desired_speed - current_speed;
+        let thrust_magnitude = if speed_error.abs() < 0.1 {
+          // Speed is close to desired - gentle adjustments only
+          log::info!("CRUISE PHASE - speed: {:.2}m/s, desired: {:.2}m/s", current_speed, desired_speed);
+          main_thrust * 0.1 // Very gentle thrust for stability
+        } else if speed_error > 0.0 {
+          // Need to speed up
+          log::info!("ACCELERATION PHASE - speed: {:.2}m/s, desired: {:.2}m/s", current_speed, desired_speed);
+          main_thrust * (speed_error / current_max_speed).min(1.0) // Proportional thrust
+        } else {
+          // Need to slow down
+          log::info!("DECELERATION PHASE - speed: {:.2}m/s, desired: {:.2}m/s", current_speed, desired_speed);
+          retro_thrust * (-speed_error / current_max_speed).min(1.0) // Proportional retro thrust
+        };
+        
+        // ALWAYS move toward the waypoint - thrust magnitude controls speed, not direction
+        // The ship should thrust in the direction of the target, not its current facing
+        let acceleration_direction = target_direction; // Move toward waypoint
+        
+        log::info!("Acceleration direction (toward waypoint): ({:.3}, {:.3}, {:.3})", 
+                  acceleration_direction.x, acceleration_direction.y, acceleration_direction.z);
+        
+        // Calculate acceleration step
+        let thrust_acceleration = thrust_magnitude / mass;
+        let acceleration_step = thrust_acceleration * dt;
+        
+        // Apply velocity change
+        let new_velocity = DVec3 {
+          x: current_velocity.x + acceleration_direction.x * acceleration_step,
+          y: current_velocity.y + acceleration_direction.y * acceleration_step,
+          z: current_velocity.z + acceleration_direction.z * acceleration_step,
+        };
+        
+        // Apply position change using average velocity
+        let avg_velocity = DVec3 {
+          x: (current_velocity.x + new_velocity.x) * 0.5,
+          y: (current_velocity.y + new_velocity.y) * 0.5,
+          z: (current_velocity.z + new_velocity.z) * 0.5,
+        };
+        
+        let new_position = DVec3 {
+          x: ship.relative_position.x + avg_velocity.x * dt,
+          y: ship.relative_position.y + avg_velocity.y * dt,
+          z: ship.relative_position.z + avg_velocity.z * dt,
+        };
+        
+        // Update ship state
+        ship.relative_velocity = new_velocity;
+        ship.relative_position = new_position;
+        
+        let new_speed = (ship.relative_velocity.x * ship.relative_velocity.x + 
+                        ship.relative_velocity.y * ship.relative_velocity.y + 
+                        ship.relative_velocity.z * ship.relative_velocity.z).sqrt();
+        log::info!("Applied thrust: {:.1}N toward waypoint, new velocity: ({:.2}, {:.2}, {:.2}), new speed: {:.2}m/s", 
+                  thrust_magnitude, ship.relative_velocity.x, ship.relative_velocity.y, ship.relative_velocity.z, new_speed);
+        log::info!("New position: ({:.2}, {:.2}, {:.2})", ship.relative_position.x, ship.relative_position.y, ship.relative_position.z);
+        
+        // Suppress unused variable warning
+        let _ = main_acceleration;
+      } else {
+        log::info!("Ship {} waiting for better orientation before moving (rotation diff: {:.3} rad)", 
+                  ship.designation, rotation_diff);
+      }
+      
+      // Check if ship has reached the waypoint (close enough to consider it reached)
+      let waypoint_reached_tolerance = 3.0; // 3 meters - tighter tolerance 
+      let reached_waypoint = distance < waypoint_reached_tolerance;
+      
+      if reached_waypoint {
+        log::info!("Ship {} has reached waypoint! Distance: {:.2}m. Creating new waypoint...", ship.designation, distance);
         
         // Store values we need before moving ship
         let ship_id = ship.id;
         let ship_position = DVec3 { x: ship.relative_position.x, y: ship.relative_position.y, z: ship.relative_position.z };
+        
+        // Stop the ship when reaching waypoint to prevent overshoot
+        ship.relative_velocity = DVec3 { x: 0.0, y: 0.0, z: 0.0 };
         
         // Update the entity in the database first
         ctx.db.entity().designation().update(ship);
@@ -319,11 +442,11 @@ fn test_reducer(
         // Get counter for pseudo-randomness
         let counter = ctx.db.animation_counter().iter().next().map(|c| c.counter).unwrap_or(0);
         
-        // Delete the current waypoint immediately
+        // Delete the current waypoint
         ctx.db.waypoint().id().delete(&waypoint.id);
         log::info!("Deleted waypoint {}", waypoint.id);
         
-        // Create a new random waypoint immediately
+        // Create a new random waypoint
         let random_angle = ((ship_id * 7919 + counter * 1009) % 628) as f64 / 100.0; // Pseudo-random angle [0, 2π]
         let random_distance = 15.0 + ((ship_id * 1327 + random_angle as u64 * 2003) % 20) as f64; // Distance 15-35 units
         
@@ -352,7 +475,7 @@ fn test_reducer(
         // Update the entity in the database
         ctx.db.entity().designation().update(ship);
         
-        log::info!("Updated ship rotation, remaining angle: {:.3} radians", rotation_diff);
+        log::info!("Updated ship - Distance to waypoint: {:.2}m, Rotation remaining: {:.3} rad", distance, rotation_diff);
       }
     } else {
       // No waypoint found - ship stays in place
@@ -523,14 +646,14 @@ fn init(
     relative_rotational_velocity: DVec3 { x: 0.0, y: 0.0, z: 0.0 },
     entity_type: EntityType::Ship,
     mass: 1000.0, // 1 ton
-    max_impulse: DVec3 { x: 50000.0, y: 25000.0, z: 800.0 }, // main, retro, nav thrust (reduced nav thrust for slower rotation)
+    max_impulse: DVec3 { x: 100.0, y: 150.0, z: 50.0 }, // main, retro, nav thrust - much lower for gentle movement
   });
 
   // Add a waypoint for the TestShip to fly to (requiring significant rotation)
   ctx.db.waypoint().insert(Waypoint {
     id: 0, // Auto-incremented
     entity_id: 1, // TestShip's ID
-    target_position: DVec3 { x: -20.0, y: 5.0, z: -5.0 }, // Far to the left, requiring ~180° rotation
+    target_position: DVec3 { x: 10.0, y: 5.0, z: -5.0 }, // Closer waypoint for testing
     order_index: 0, // First waypoint
   });
 
@@ -539,4 +662,65 @@ fn init(
       scheduled_id: 1,
       scheduled_at: ScheduleAt::Interval(TimeDuration::from_micros(00_050_000)),
     });
+}
+
+#[reducer]
+pub fn reset_ship(ctx: &ReducerContext) {
+  log::info!("Resetting ship position and velocity...");
+  
+  if let Some(mut ship) = ctx.db.entity().designation().find(&"TestShip".to_string()) {
+    log::info!("Found ship at position ({}, {}, {})", 
+              ship.relative_position.x, ship.relative_position.y, ship.relative_position.z);
+    
+    let ship_id = ship.id; // Store the ID before moving ship
+    
+    // Reset ship position and velocity
+    ship.relative_position = DVec3 { x: 0.0, y: 5.0, z: -5.0 };
+    ship.relative_velocity = DVec3 { x: 0.0, y: 0.0, z: 0.0 };
+    ship.relative_rotation = DQuat { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }; // Identity quaternion
+    ship.relative_rotational_velocity = DVec3 { x: 0.0, y: 0.0, z: 0.0 };
+    
+    ctx.db.entity().designation().update(ship);
+    log::info!("Reset ship to origin (0, 5, -5)");
+    
+    // Also clear any existing waypoints and create a new one
+    for waypoint in ctx.db.waypoint().iter() {
+      if waypoint.entity_id == ship_id {
+        ctx.db.waypoint().id().delete(&waypoint.id);
+        log::info!("Deleted waypoint {}", waypoint.id);
+      }
+    }
+    
+    // Create a simple nearby waypoint for testing
+    ctx.db.waypoint().insert(Waypoint {
+      id: 0,
+      entity_id: ship_id,
+      target_position: DVec3 { x: 10.0, y: 5.0, z: -5.0 },
+      order_index: 0,
+    });
+    log::info!("Created new waypoint at (10, 5, -5)");
+  } else {
+    log::info!("TestShip not found");
+  }
+}
+
+#[reducer]
+pub fn fix_ship_thrust(ctx: &ReducerContext) {
+  if let Some(mut ship) = ctx.db.entity().designation().find(&"TestShip".to_string()) {
+    // Update thrust values to much gentler levels for smooth movement
+    ship.max_impulse = DVec3 {
+      x: 300.0,  // Main thrust: 100N (0.1 m/s² for 1000kg ship)
+      y: 175.0,  // Retro thrust: 150N (0.15 m/s² deceleration) 
+      z: 125.0,   // Nav thrust: 50N (very gentle rotation)
+    };
+    
+    // Also reset velocity to prevent runaway acceleration
+    ship.relative_velocity = DVec3 { x: 0.0, y: 0.0, z: 0.0 };
+    
+    ctx.db.entity().designation().update(ship);
+    log::info!("Updated ship thrust values: main=100N, retro=150N, nav=50N");
+    log::info!("Reset ship velocity to prevent runaway acceleration");
+  } else {
+    log::error!("TestShip not found for thrust adjustment");
+  }
 }
