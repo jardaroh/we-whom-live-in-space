@@ -646,7 +646,7 @@ fn init(
     relative_rotational_velocity: DVec3 { x: 0.0, y: 0.0, z: 0.0 },
     entity_type: EntityType::Ship,
     mass: 1000.0, // 1 ton
-    max_impulse: DVec3 { x: 100.0, y: 150.0, z: 50.0 }, // main, retro, nav thrust - much lower for gentle movement
+    max_impulse: DVec3 { x: 400.0, y: 250.0, z: 150.0 }, // main, retro, nav thrust - much lower for gentle movement
   });
 
   // Add a waypoint for the TestShip to fly to (requiring significant rotation)
@@ -701,26 +701,5 @@ pub fn reset_ship(ctx: &ReducerContext) {
     log::info!("Created new waypoint at (10, 5, -5)");
   } else {
     log::info!("TestShip not found");
-  }
-}
-
-#[reducer]
-pub fn fix_ship_thrust(ctx: &ReducerContext) {
-  if let Some(mut ship) = ctx.db.entity().designation().find(&"TestShip".to_string()) {
-    // Update thrust values to much gentler levels for smooth movement
-    ship.max_impulse = DVec3 {
-      x: 300.0,  // Main thrust: 100N (0.1 m/s² for 1000kg ship)
-      y: 175.0,  // Retro thrust: 150N (0.15 m/s² deceleration) 
-      z: 125.0,   // Nav thrust: 50N (very gentle rotation)
-    };
-    
-    // Also reset velocity to prevent runaway acceleration
-    ship.relative_velocity = DVec3 { x: 0.0, y: 0.0, z: 0.0 };
-    
-    ctx.db.entity().designation().update(ship);
-    log::info!("Updated ship thrust values: main=100N, retro=150N, nav=50N");
-    log::info!("Reset ship velocity to prevent runaway acceleration");
-  } else {
-    log::error!("TestShip not found for thrust adjustment");
   }
 }
