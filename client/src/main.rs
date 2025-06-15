@@ -31,7 +31,7 @@ use ui::ui_button::button;
 use ui::ui_checkbox::checkbox;
 use ui::ui_input::text_input;
 
-use ui::ui_plugin::ui_plugin;
+use ui::ui_plugin;
 use camera::camera_plugin::camera_plugin;
 use space::space_plugin::space_plugin;
 use mesh_utils::mesh_utils_plugin;

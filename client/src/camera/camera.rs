@@ -4,6 +4,8 @@ use bevy::{core_pipeline::{
   tonemapping::Tonemapping,
 }, input::mouse::{AccumulatedMouseMotion, MouseWheel}, prelude::*, render::{camera::CameraOutputMode, render_resource::BlendState}, window::PrimaryWindow};
 
+use crate::ui::ui_window::WindowManager;
+
 use crate::components::Ship;
 
 #[derive(Component)]
@@ -94,8 +96,8 @@ pub fn camera_setup(
 
 pub fn orbit_system(
     mut camera_query: Query<
-        (&mut Transform, &mut AngularVelocity, &mut CameraState),
-        With<Camera3d>,
+      (&mut Transform, &mut AngularVelocity, &mut CameraState),
+      With<Camera3d>,
     >,
     camera_settings: Res<CameraSettings>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
@@ -104,104 +106,112 @@ pub fn orbit_system(
     time: Res<Time>,
     ship_query: Query<&Transform, (With<Ship>, Without<Camera3d>)>,
     window_query: Query<&Window, With<PrimaryWindow>>,
+    ui_interaction_query: Query<&Interaction, With<Node>>,
+    window_manager: Res<WindowManager>,
 ) {
-    let dt = time.delta_secs();
-    let velocity_threshold = 0.05; // Stop updates when velocities are below this
-    let rotation_threshold = 0.0005; // Skip transform updates for tiny rotation changes
-    let zoom_threshold = 0.01; // Threshold for zoom changes
+  let dt = time.delta_secs();
+  let velocity_threshold = 0.05;
+  let rotation_threshold = 0.0005;
+  let zoom_threshold = 0.01;
 
-    let window_focused = window_query.single().map(|w| w.focused).unwrap_or(true);
-    let target = ship_query.single().map_or(Vec3::ZERO, |t| t.translation);
+  let window_focused = window_query.single().map(|w| w.focused).unwrap_or(true);
+  let target = ship_query.single().map_or(Vec3::ZERO, |t| t.translation);
 
-    for (mut transform, mut angular_velocity, mut camera_state) in camera_query.iter_mut() {
-        let mut update_transform = false;
+  // Check if mouse is over any UI element
+  let mouse_over_ui = ui_interaction_query.iter().any(|interaction| {
+    matches!(interaction, Interaction::Hovered | Interaction::Pressed)
+  });
 
-        // Handle orbiting (yaw/pitch)
-        if window_focused
-            && mouse_buttons.pressed(MouseButton::Left)
-            && mouse_motion.delta != Vec2::ZERO
-        {
-            let delta = mouse_motion.delta;
-            let target_yaw_velocity = -delta.x * camera_settings.yaw_speed;
-            let target_pitch_velocity = -delta.y * camera_settings.pitch_speed;
-            let accel_factor = (camera_settings.acceleration * dt).min(1.0); // Relaxed cap
-            angular_velocity.yaw = angular_velocity.yaw.lerp(target_yaw_velocity, accel_factor);
-            angular_velocity.pitch = angular_velocity.pitch.lerp(target_pitch_velocity, accel_factor);
-            update_transform = true;
-        } else if angular_velocity.yaw.abs() > velocity_threshold
-            || angular_velocity.pitch.abs() > velocity_threshold
-        {
-            let decay_factor = (1.0 - camera_settings.deacceleration * dt).max(0.0);
-            angular_velocity.yaw *= decay_factor;
-            angular_velocity.pitch *= decay_factor;
-            update_transform = true;
+  for (mut transform, mut angular_velocity, mut camera_state) in camera_query.iter_mut() {
+    let mut update_transform = false;
 
-            if angular_velocity.yaw.abs() < velocity_threshold {
-                angular_velocity.yaw = 0.0;
-            }
-            if angular_velocity.pitch.abs() < velocity_threshold {
-                angular_velocity.pitch = 0.0;
-            }
-        } else {
-            angular_velocity.yaw = 0.0;
-            angular_velocity.pitch = 0.0;
-        }
+    // Handle orbiting (yaw/pitch) - only if not over UI
+    if window_focused
+      && !mouse_over_ui
+      && !window_manager.is_dragging_window
+      && mouse_buttons.pressed(MouseButton::Left)
+      && mouse_motion.delta != Vec2::ZERO
+    {
+      let delta = mouse_motion.delta;
+      let target_yaw_velocity = -delta.x * camera_settings.yaw_speed;
+      let target_pitch_velocity = -delta.y * camera_settings.pitch_speed;
+      let accel_factor = (camera_settings.acceleration * dt).min(1.0);
+      angular_velocity.yaw = angular_velocity.yaw.lerp(target_yaw_velocity, accel_factor);
+      angular_velocity.pitch = angular_velocity.pitch.lerp(target_pitch_velocity, accel_factor);
+      update_transform = true;
+    } else if angular_velocity.yaw.abs() > velocity_threshold
+      || angular_velocity.pitch.abs() > velocity_threshold
+    {
+      let decay_factor = (1.0 - camera_settings.deacceleration * dt).max(0.0);
+      angular_velocity.yaw *= decay_factor;
+      angular_velocity.pitch *= decay_factor;
+      update_transform = true;
 
-        // Handle zooming
-        let mut zoom_input = 0.0;
-        if window_focused {
-            for ev in mouse_wheel.read() {
-                zoom_input += ev.y; // Mouse wheel up (+1) zooms in, down (-1) zooms out
-            }
-        }
-        if zoom_input != 0.0 {
-            let target_zoom_velocity = -zoom_input * camera_settings.zoom_speed;
-            let accel_factor = (camera_settings.acceleration * dt).min(1.0);
-            angular_velocity.zoom = angular_velocity.zoom.lerp(target_zoom_velocity, accel_factor);
-            update_transform = true;
-        } else if angular_velocity.zoom.abs() > velocity_threshold {
-            let decay_factor = (1.0 - camera_settings.deacceleration * dt).max(0.0);
-            angular_velocity.zoom *= decay_factor;
-            update_transform = true;
-
-            if angular_velocity.zoom.abs() < velocity_threshold {
-                angular_velocity.zoom = 0.0;
-            }
-        } else {
-            angular_velocity.zoom = 0.0;
-        }
-
-        if update_transform {
-            let prev_yaw = camera_state.yaw;
-            let prev_pitch = camera_state.pitch;
-            let prev_distance = camera_state.orbit_distance;
-
-            // Update rotation and zoom
-            camera_state.yaw += angular_velocity.yaw * dt;
-            camera_state.pitch += angular_velocity.pitch * dt;
-            camera_state.orbit_distance += angular_velocity.zoom * dt;
-
-            // Clamp pitch and wrap yaw
-            camera_state.pitch = camera_state
-                .pitch
-                .clamp(camera_settings.pitch_range.start, camera_settings.pitch_range.end);
-            camera_state.yaw = camera_state.yaw % TAU;
-            camera_state.orbit_distance = camera_state
-                .orbit_distance
-                .clamp(camera_settings.zoom_range.start, camera_settings.zoom_range.end);
-
-            // Only update transform if changes are significant
-            if (camera_state.yaw - prev_yaw).abs() > rotation_threshold
-                || (camera_state.pitch - prev_pitch).abs() > rotation_threshold
-                || (camera_state.orbit_distance - prev_distance).abs() > zoom_threshold
-            {
-                transform.rotation =
-                    Quat::from_euler(EulerRot::YXZ, camera_state.yaw, camera_state.pitch, 0.0);
-                transform.translation = target - transform.forward() * camera_state.orbit_distance;
-            }
-        } else if transform.translation != target {
-            let forward = transform.forward();
-            transform.translation = target - forward * camera_state.orbit_distance;
-        }
+      if angular_velocity.yaw.abs() < velocity_threshold {
+        angular_velocity.yaw = 0.0;
+      }
+      if angular_velocity.pitch.abs() < velocity_threshold {
+        angular_velocity.pitch = 0.0;
+      }
+    } else {
+      angular_velocity.yaw = 0.0;
+      angular_velocity.pitch = 0.0;
     }
+
+    // Handle zooming - only if not over UI or dragging a window
+    let mut zoom_input = 0.0;
+    if window_focused && !mouse_over_ui && !window_manager.is_dragging_window {
+      for ev in mouse_wheel.read() {
+        zoom_input += ev.y;
+      }
+    }
+    
+    // ZOOM!
+    if zoom_input != 0.0 {
+      let target_zoom_velocity = -zoom_input * camera_settings.zoom_speed;
+      let accel_factor = (camera_settings.acceleration * dt).min(1.0);
+      angular_velocity.zoom = angular_velocity.zoom.lerp(target_zoom_velocity, accel_factor);
+      update_transform = true;
+    } else if angular_velocity.zoom.abs() > velocity_threshold {
+      let decay_factor = (1.0 - camera_settings.deacceleration * dt).max(0.0);
+      angular_velocity.zoom *= decay_factor;
+      update_transform = true;
+
+      if angular_velocity.zoom.abs() < velocity_threshold {
+        angular_velocity.zoom = 0.0;
+      }
+    } else {
+      angular_velocity.zoom = 0.0;
+    }
+
+    if update_transform {
+      let prev_yaw = camera_state.yaw;
+      let prev_pitch = camera_state.pitch;
+      let prev_distance = camera_state.orbit_distance;
+
+      camera_state.yaw += angular_velocity.yaw * dt;
+      camera_state.pitch += angular_velocity.pitch * dt;
+      camera_state.orbit_distance += angular_velocity.zoom * dt;
+
+      camera_state.pitch = camera_state
+        .pitch
+        .clamp(camera_settings.pitch_range.start, camera_settings.pitch_range.end);
+      camera_state.yaw = camera_state.yaw % TAU;
+      camera_state.orbit_distance = camera_state
+        .orbit_distance
+        .clamp(camera_settings.zoom_range.start, camera_settings.zoom_range.end);
+
+      if (camera_state.yaw - prev_yaw).abs() > rotation_threshold
+        || (camera_state.pitch - prev_pitch).abs() > rotation_threshold
+        || (camera_state.orbit_distance - prev_distance).abs() > zoom_threshold
+      {
+        transform.rotation =
+          Quat::from_euler(EulerRot::YXZ, camera_state.yaw, camera_state.pitch, 0.0);
+        transform.translation = target - transform.forward() * camera_state.orbit_distance;
+      }
+    } else if transform.translation != target {
+      let forward = transform.forward();
+      transform.translation = target - forward * camera_state.orbit_distance;
+    }
+  }
 }
