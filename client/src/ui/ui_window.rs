@@ -1,4 +1,4 @@
-use bevy::{math::VectorSpace, prelude::*};
+use bevy::{math::VectorSpace, picking::window, prelude::*};
 
 #[derive(Event)]
 pub struct WindowCloseEvent {
@@ -91,6 +91,11 @@ impl SnapZone {
   }
 }
 
+#[derive(Component)]
+pub struct ResizeHandleRef {
+  pub window_entity: Entity,
+}
+
 #[derive(Component, Debug, Clone)]
 pub struct Window {
   pub title: String,
@@ -155,6 +160,7 @@ pub struct WindowManager {
   pub snap_threshold: f32,
   pub snap_zones: Vec<SnapZone>,
   pub is_dragging_window: bool,
+  pub is_resizing_window: bool,
   pub dragging_window_entity: Option<Entity>,
 }
 
@@ -167,6 +173,7 @@ impl Default for WindowManager {
         SnapZone::new(Vec2::ZERO, Vec2::new(50.0, 50.0)),
       ],
       is_dragging_window: false,
+      is_resizing_window: false,
       dragging_window_entity: None,
     }
   }
@@ -188,11 +195,12 @@ fn handle_window_focus_click(
 }
 
 fn handle_window_interactions(
-    mut interaction_query: Query<(&Interaction, &mut BackgroundColor, &WindowTitleBar), (Changed<Interaction>)>,
+    mut interaction_query: Query<(&Interaction, &mut BackgroundColor, &WindowTitleBar), Changed<Interaction>>,
     mut window_query: Query<&mut Window>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
     mut focus_events: EventWriter<WindowFocusEvent>,
     mut drag_events: EventWriter<WindowDragEvent>,
+    window_manager: Res<WindowManager>,
 ) {
   for (interaction, mut bg_color, title_bar) in interaction_query.iter_mut() {
     match *interaction {
@@ -202,7 +210,7 @@ fn handle_window_interactions(
         // Find the window this title bar belongs to
         // For now, we'll need to traverse up to find the window
         // This is a simplified approach - you might want to store window entity on title bar
-        if mouse_buttons.just_pressed(MouseButton::Left) {
+        if mouse_buttons.just_pressed(MouseButton::Left) && !window_manager.is_resizing_window {
           focus_events.write(WindowFocusEvent {
             window_entity: title_bar.window_entity, // This should be the actual window entity
           });
@@ -230,6 +238,48 @@ fn handle_window_interactions(
   }
 }
 
+fn handle_resize_interactions(
+  mut interaction_query: Query<(&Interaction, &mut BackgroundColor, &WindowResizeHandle, &ResizeHandleRef), Changed<Interaction>>,
+  mut window_query: Query<&mut Window>,
+  mouse_buttons: Res<ButtonInput<MouseButton>>,
+  mut resize_events: EventWriter<WindowResizeEvent>,
+  primary_window: Query<&bevy::window::Window, With<bevy::window::PrimaryWindow>>,
+  mut window_manager: ResMut<WindowManager>,
+) {
+  for (interaction, mut bg_color, resize_handle, handle_ref) in interaction_query.iter_mut() {
+    match *interaction {
+      Interaction::Pressed => {
+        *bg_color = BackgroundColor(Color::srgba(0.7, 0.7, 0.7, 0.5)); // Make visible when pressed
+        
+        if mouse_buttons.just_pressed(MouseButton::Left) {
+          window_manager.is_resizing_window = true;
+
+          if let Ok(window) = primary_window.single() {
+            if let Some(cursor_pos) = window.cursor_position() {
+              if let Ok(mut win) = window_query.get_mut(handle_ref.window_entity) {
+                win.drag_handle = Some(resize_handle.handle_type);
+                
+                resize_events.write(WindowResizeEvent {
+                  window_entity: handle_ref.window_entity,
+                  position: cursor_pos,
+                  size: win.size,
+                  drag_handle: resize_handle.handle_type,
+                });
+              }
+            }
+          }
+        }
+      }
+      Interaction::Hovered => {
+        *bg_color = BackgroundColor(Color::srgba(0.6, 0.6, 0.6, 0.3)); // Semi-visible on hover
+      }
+      Interaction::None => {
+        *bg_color = BackgroundColor(Color::srgba(0.5, 0.5, 0.5, 0.0)); // Invisible
+      }
+    }
+  }
+}
+
 fn handle_window_drag(
     mut drag_events: EventReader<WindowDragEvent>,
     mut window_query: Query<(&mut Window, &mut Node)>,
@@ -245,7 +295,7 @@ fn handle_window_drag(
 
         if let Ok((mut win, _)) = window_query.get_mut(event.window_entity) {
           win.drag_offset = cursor_pos - win.position;
-
+          win.drag_handle = Some(ResizeHandle::None); // Use None to indicate dragging
           window_manager.is_dragging_window = true;
           window_manager.dragging_window_entity = Some(event.window_entity);
         }
@@ -263,7 +313,7 @@ fn handle_window_drag(
           let screen_height = window.height();
 
           for (mut win, mut node) in window_query.iter_mut() {
-            if win.drag_handle.is_some() {
+            if win.drag_handle == Some(ResizeHandle::None) {
               let new_position = win.position + delta;
               
               // Strict clamping - window cannot go outside screen bounds
@@ -281,20 +331,15 @@ fn handle_window_drag(
     }
   } else {
     for (mut win, _) in window_query.iter_mut() {
-      win.drag_handle = None; // Reset drag handle when mouse button is released
+      if win.drag_handle == Some(ResizeHandle::None) {
+        win.drag_handle = None; // Reset drag handle when mouse button is released
+      }
     }
     *last_cursor_pos = None; // Reset last cursor position
 
     window_manager.is_dragging_window = false;
     window_manager.dragging_window_entity = None;
   }
-}
-
-fn handle_window_resize(
-    mut resize_events: EventReader<WindowResizeEvent>,
-    mut window_query: Query<&mut Window>,
-) {
-    // TODO: Implement resize handling
 }
 
 fn handle_window_focus(
@@ -306,6 +351,155 @@ fn handle_window_focus(
     if let Ok(mut window) = window_query.get_mut(event.window_entity) {
       window.z_index = window_manager.next_z_index;
       window_manager.next_z_index += 1;
+    }
+  }
+}
+
+fn handle_window_resize(
+  mut resize_events: EventReader<WindowResizeEvent>,
+  mut window_query: Query<(&mut Window, &mut Node)>,
+  mouse_buttons: Res<ButtonInput<MouseButton>>,
+  primary_window: Query<&bevy::window::Window, With<bevy::window::PrimaryWindow>>,
+  mut last_cursor_pos: Local<Option<Vec2>>,
+  mut window_manager: ResMut<WindowManager>,
+) {
+  // Start resize
+  for event in resize_events.read() {
+    if let Ok(window) = primary_window.single() {
+      if let Some(cursor_pos) = window.cursor_position() {
+        *last_cursor_pos = Some(cursor_pos);
+        window_manager.is_dragging_window = true; // Prevent camera orbit during resize
+        window_manager.dragging_window_entity = Some(event.window_entity);
+      }
+    }
+  }
+
+  // Handle ongoing resize
+  if mouse_buttons.pressed(MouseButton::Left) {
+    if let Ok(window) = primary_window.single() {
+      if let Some(cursor_pos) = window.cursor_position() {
+        if let Some(last_pos) = *last_cursor_pos {
+          let delta = cursor_pos - last_pos;
+          
+          let screen_width = window.width();
+          let screen_height = window.height();
+
+          for (mut win, mut node) in window_query.iter_mut() {
+            if let Some(handle_type) = win.drag_handle {
+              if handle_type != ResizeHandle::None { // ResizeHandle::None is for dragging
+                let min_size = Vec2::new(100.0, 80.0); // Minimum window size
+                
+                match handle_type {
+                  ResizeHandle::Right => {
+                    let new_width = (win.size.x + delta.x).max(min_size.x);
+                    let max_width = screen_width - win.position.x;
+                    win.size.x = new_width.min(max_width);
+                  }
+                  ResizeHandle::Bottom => {
+                    let new_height = (win.size.y + delta.y).max(min_size.y);
+                    let max_height = screen_height - win.position.y;
+                    win.size.y = new_height.min(max_height);
+                  }
+                  ResizeHandle::BottomRight => {
+                    let new_width = (win.size.x + delta.x).max(min_size.x);
+                    let new_height = (win.size.y + delta.y).max(min_size.y);
+                    let max_width = screen_width - win.position.x;
+                    let max_height = screen_height - win.position.y;
+                    win.size.x = new_width.min(max_width);
+                    win.size.y = new_height.min(max_height);
+                  }
+                  ResizeHandle::Left => {
+                    let new_width = (win.size.x - delta.x).max(min_size.x);
+                    let new_position_x = win.position.x + (win.size.x - new_width);
+                    if new_position_x >= 0.0 {
+                      win.size.x = new_width;
+                      win.position.x = new_position_x;
+                      // Only update node position for left resize, not in the main update below
+                      node.left = Val::Px(win.position.x);
+                    }
+                  }
+                  ResizeHandle::Top => {
+                    let new_height = (win.size.y - delta.y).max(min_size.y);
+                    let new_position_y = win.position.y + (win.size.y - new_height);
+                    if new_position_y >= 0.0 {
+                      win.size.y = new_height;
+                      win.position.y = new_position_y;
+                      // Only update node position for top resize, not in the main update below
+                      node.top = Val::Px(win.position.y);
+                    }
+                  }
+                  ResizeHandle::TopLeft => {
+                    let new_width = (win.size.x - delta.x).max(min_size.x);
+                    let new_height = (win.size.y - delta.y).max(min_size.y);
+                    let new_position_x = win.position.x + (win.size.x - new_width);
+                    let new_position_y = win.position.y + (win.size.y - new_height);
+                    
+                    if new_position_x >= 0.0 && new_position_y >= 0.0 {
+                      win.size.x = new_width;
+                      win.size.y = new_height;
+                      win.position.x = new_position_x;
+                      win.position.y = new_position_y;
+                      // Update node position for top-left resize
+                      node.left = Val::Px(win.position.x);
+                      node.top = Val::Px(win.position.y);
+                    }
+                  }
+                  ResizeHandle::TopRight => {
+                    let new_width = (win.size.x + delta.x).max(min_size.x);
+                    let new_height = (win.size.y - delta.y).max(min_size.y);
+                    let new_position_y = win.position.y + (win.size.y - new_height);
+                    let max_width = screen_width - win.position.x;
+                    
+                    if new_position_y >= 0.0 {
+                      win.size.x = new_width.min(max_width);
+                      win.size.y = new_height;
+                      win.position.y = new_position_y;
+                      // Only update Y position for top-right resize
+                      node.top = Val::Px(win.position.y);
+                    }
+                  }
+                  ResizeHandle::BottomLeft => {
+                    let new_width = (win.size.x - delta.x).max(min_size.x);
+                    let new_height = (win.size.y + delta.y).max(min_size.y);
+                    let new_position_x = win.position.x + (win.size.x - new_width);
+                    let max_height = screen_height - win.position.y;
+                    
+                    if new_position_x >= 0.0 {
+                      win.size.x = new_width;
+                      win.size.y = new_height.min(max_height);
+                      win.position.x = new_position_x;
+                      // Only update X position for bottom-left resize
+                      node.left = Val::Px(win.position.x);
+                    }
+                  }
+                  _ => {}
+                }
+                
+                // Always update node size (but not position unless specifically handled above)
+                node.width = Val::Px(win.size.x);
+                node.height = Val::Px(win.size.y);
+              }
+            }
+          }
+        }
+        *last_cursor_pos = Some(cursor_pos);
+      }
+    }
+  } else {
+    // Stop resizing
+    for (mut win, _) in window_query.iter_mut() {
+      if let Some(handle_type) = win.drag_handle {
+        if handle_type != ResizeHandle::None {
+          win.drag_handle = None;
+        }
+      }
+    }
+    *last_cursor_pos = None;
+    
+    window_manager.is_resizing_window = false;
+    if window_manager.is_dragging_window {
+      window_manager.is_dragging_window = false;
+      window_manager.dragging_window_entity = None;
     }
   }
 }
@@ -500,11 +694,145 @@ pub fn create_window(
     ));
   }).id();
 
+  let resize_handle_size = 8.0;
+  // Corner handles
+  let top_left_handle = create_resize_handle(commands, window_entity, ResizeHandle::TopLeft, resize_handle_size, Vec2::new(0.0, 0.0));
+  let top_right_handle = create_resize_handle(commands, window_entity, ResizeHandle::TopRight, resize_handle_size, Vec2::new(size.x - resize_handle_size, 0.0));
+  let bottom_left_handle = create_resize_handle(commands, window_entity, ResizeHandle::BottomLeft, resize_handle_size, Vec2::new(0.0, size.y - resize_handle_size));
+  let bottom_right_handle = create_resize_handle(commands, window_entity, ResizeHandle::BottomRight, resize_handle_size, Vec2::new(size.x - resize_handle_size, size.y - resize_handle_size));
+  
+  // Edge handles
+  let top_handle = create_edge_resize_handle(commands, window_entity, ResizeHandle::Top, Vec2::new(size.x - 2.0 * resize_handle_size, resize_handle_size), Vec2::new(resize_handle_size, 0.0));
+  let bottom_handle = create_edge_resize_handle(commands, window_entity, ResizeHandle::Bottom, Vec2::new(size.x - 2.0 * resize_handle_size, resize_handle_size), Vec2::new(resize_handle_size, size.y - resize_handle_size));
+  let left_handle = create_edge_resize_handle(commands, window_entity, ResizeHandle::Left, Vec2::new(resize_handle_size, size.y - 2.0 * resize_handle_size), Vec2::new(0.0, resize_handle_size));
+  let right_handle = create_edge_resize_handle(commands, window_entity, ResizeHandle::Right, Vec2::new(resize_handle_size, size.y - 2.0 * resize_handle_size), Vec2::new(size.x - resize_handle_size, resize_handle_size));
+
   commands.entity(buttons_container).add_children(&[minimize_button, close_button]);
   commands.entity(title_bar).add_children(&[title_text, buttons_container]);
-  commands.entity(window_entity).add_children(&[title_bar, content_area]);
+  commands.entity(window_entity).add_children(&[
+    title_bar,
+    content_area,
+    top_left_handle,
+    top_right_handle,
+    bottom_left_handle,
+    bottom_right_handle,
+    top_handle,
+    bottom_handle,
+    left_handle,
+    right_handle,
+  ]);
 
   window_entity
+}
+
+fn update_resize_handle_positions(
+  window_query: Query<(Entity, &Window), Changed<Window>>,
+  mut handle_query: Query<(&mut Node, &WindowResizeHandle, &ResizeHandleRef)>,
+) {
+  for (window_entity, window) in window_query.iter() {
+    let resize_handle_size = 8.0;
+    
+    for (mut handle_node, resize_handle, handle_ref) in handle_query.iter_mut() {
+      if handle_ref.window_entity == window_entity {
+        match resize_handle.handle_type {
+          ResizeHandle::TopLeft => {
+            handle_node.left = Val::Px(0.0);
+            handle_node.top = Val::Px(0.0);
+          }
+          ResizeHandle::TopRight => {
+            handle_node.left = Val::Px(window.size.x - resize_handle_size);
+            handle_node.top = Val::Px(0.0);
+          }
+          ResizeHandle::BottomLeft => {
+            handle_node.left = Val::Px(0.0);
+            handle_node.top = Val::Px(window.size.y - resize_handle_size);
+          }
+          ResizeHandle::BottomRight => {
+            handle_node.left = Val::Px(window.size.x - resize_handle_size);
+            handle_node.top = Val::Px(window.size.y - resize_handle_size);
+          }
+          ResizeHandle::Top => {
+            handle_node.left = Val::Px(resize_handle_size);
+            handle_node.top = Val::Px(0.0);
+            handle_node.width = Val::Px(window.size.x - 2.0 * resize_handle_size);
+          }
+          ResizeHandle::Bottom => {
+            handle_node.left = Val::Px(resize_handle_size);
+            handle_node.top = Val::Px(window.size.y - resize_handle_size);
+            handle_node.width = Val::Px(window.size.x - 2.0 * resize_handle_size);
+          }
+          ResizeHandle::Left => {
+            handle_node.left = Val::Px(0.0);
+            handle_node.top = Val::Px(resize_handle_size);
+            handle_node.height = Val::Px(window.size.y - 2.0 * resize_handle_size);
+          }
+          ResizeHandle::Right => {
+            handle_node.left = Val::Px(window.size.x - resize_handle_size);
+            handle_node.top = Val::Px(resize_handle_size);
+            handle_node.height = Val::Px(window.size.y - 2.0 * resize_handle_size);
+          }
+          ResizeHandle::None => {} // Skip for drag handles
+        }
+      }
+    }
+  }
+}
+
+// Handle creation functions < ======================================================= |
+// Helper function to create corner resize handles
+fn create_resize_handle(
+  commands: &mut Commands,
+  window_entity: Entity,
+  handle_type: ResizeHandle,
+  size: f32,
+  position: Vec2,
+) -> Entity {
+  commands.spawn((
+    Node {
+      position_type: PositionType::Absolute,
+      left: Val::Px(position.x),
+      top: Val::Px(position.y),
+      width: Val::Px(size),
+      height: Val::Px(size),
+      ..default()
+    },
+    BackgroundColor(Color::srgba(0.5, 0.5, 0.5, 0.0)), // Invisible by default
+    Interaction::default(),
+    WindowResizeHandle {
+      handle_type,
+    },
+    ResizeHandleRef {
+      window_entity,
+    },
+  )).id()
+}
+
+// Helper function to create edge resize handles
+fn create_edge_resize_handle(
+  commands: &mut Commands,
+  window_entity: Entity,
+  handle_type: ResizeHandle,
+  size: Vec2,
+  position: Vec2,
+) -> Entity {
+  commands.spawn((
+    Node {
+      position_type: PositionType::Absolute,
+      left: Val::Px(position.x),
+      top: Val::Px(position.y),
+      width: Val::Px(size.x),
+      height: Val::Px(size.y),
+      ..default()
+    },
+    BackgroundColor(Color::srgba(0.5, 0.5, 0.5, 0.0)), // Invisible by default
+    Interaction::default(),
+    WindowResizeHandle {
+      handle_type,
+    },
+    ResizeHandleRef {
+      window_entity,
+    },
+  )).id()
 }
 
 // Plugin < ========================================================================== |
@@ -524,9 +852,11 @@ impl Plugin for WindowPlugin {
       .init_resource::<WindowManager>()
       .add_systems(Update, (
         handle_window_focus_click,
+        handle_resize_interactions,
         handle_window_interactions,
         handle_window_drag,
         handle_window_resize,
+        update_resize_handle_positions,
         handle_window_focus,
         handle_window_snap,
         handle_window_buttons,
