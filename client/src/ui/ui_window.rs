@@ -110,6 +110,10 @@ pub struct Window {
   pub is_maximized: bool,
   pub pre_maximized_size: Vec2,
   pub pre_maximized_position: Vec2,
+  pub is_minimized: bool,
+  pub pre_minimized_size: Vec2,
+  pub pre_minimized_position: Vec2,
+  pub minimize_slot: Option<usize>,
 }
 
 impl Default for Window {
@@ -127,6 +131,10 @@ impl Default for Window {
       is_maximized: false,
       pre_maximized_size: Vec2::new(800.0, 600.0),
       pre_maximized_position: Vec2::new(100.0, 100.0),
+      is_minimized: false,
+      pre_minimized_size: Vec2::new(800.0, 600.0),
+      pre_minimized_position: Vec2::new(100.0, 100.0),
+      minimize_slot: None,
     }
   }
 }
@@ -327,7 +335,7 @@ fn handle_window_drag(
 ) {
   for event in drag_events.read() {
     if let Ok((window, _)) = window_query.get(event.window_entity) {
-      if window.is_maximized {
+      if window.is_maximized || window.is_minimized {
         continue; // Skip dragging for maximized windows
       }
     }
@@ -371,7 +379,7 @@ fn handle_window_drag(
           }
 
           for (mut win, mut node) in window_query.iter_mut() {
-            if win.drag_handle == Some(ResizeHandle::None) && !win.is_maximized {
+            if win.drag_handle == Some(ResizeHandle::None) && !win.is_maximized && !win.is_minimized {
               let proposed_position = win.position + delta;
 
               let final_position = if window_manager.snap_enabled {
@@ -436,7 +444,7 @@ fn handle_window_resize(
   // Start resize
   for event in resize_events.read() {
     if let Ok((window, _)) = window_query.get(event.window_entity) {
-      if window.is_collapsed || window.is_maximized {
+      if window.is_collapsed || window.is_maximized || window.is_minimized {
         continue;
       }
     }
@@ -478,7 +486,7 @@ fn handle_window_resize(
           }
 
           for (mut win, mut node) in window_query.iter_mut() {
-            if win.is_collapsed || win.is_maximized {
+            if win.is_collapsed || win.is_maximized || win.is_minimized {
               continue; // Skip resizing collapsed windows
             }
 
@@ -762,6 +770,98 @@ fn handle_window_maximize(
             }
         }
     }
+}
+
+fn handle_window_minimize(
+  mut minimize_events: EventReader<WindowMinimizeEvent>,
+  mut window_query: Query<(&mut Window, &mut Node)>,
+  mut content_query: Query<&mut Visibility, (With<WindowContent>, Without<Window>)>,
+  mut resize_handle_query: Query<&mut Visibility, (With<WindowResizeHandle>, Without<Window>, Without<WindowContent>)>,
+  children_query: Query<&Children>,
+  primary_window: Query<&bevy::window::Window, With<bevy::window::PrimaryWindow>>,
+  mut window_manager: ResMut<WindowManager>,
+) {
+  for event in minimize_events.read() {
+    // First, collect the used slots before we start mutating
+    let mut used_slots = std::collections::HashSet::new();
+    for (window, _) in window_query.iter() {
+      if window.is_minimized {
+        if let Some(slot) = window.minimize_slot {
+          used_slots.insert(slot);
+        }
+      }
+    }
+    
+    // Find the first available slot
+    let mut slot = 0;
+    while used_slots.contains(&slot) {
+      slot += 1;
+    }
+    
+    // Now handle the minimize event
+    if let Ok((mut window, mut window_node)) = window_query.get_mut(event.window_entity) {
+      if let Ok(screen) = primary_window.single() {
+        window.is_minimized = !window.is_minimized;
+        
+        if window.is_minimized {
+          // Store the current size and position before minimizing
+          window.pre_minimized_size = window.size;
+          window.pre_minimized_position = window.position;
+          
+          // If the window is maximized, restore to normal first
+          if window.is_maximized {
+            window.is_maximized = false;
+            window.size = window.pre_maximized_size;
+            window.position = window.pre_maximized_position;
+          }
+          
+          // If the window is collapsed, expand it first then minimize
+          if window.is_collapsed {
+            window.is_collapsed = false;
+            window.size = window.uncollapsed_size;
+          }
+          
+          window.minimize_slot = Some(slot);
+          
+          // Calculate position in taskbar
+          let taskbar_position = calculate_minimize_position(slot, screen.width(), screen.height());
+          window.position = taskbar_position;
+          window.size = Vec2::new(200.0, 30.0); // Taskbar window size
+          window.state = WindowState::Minimized;
+          
+          // Update the UI node
+          window_node.left = Val::Px(window.position.x);
+          window_node.top = Val::Px(window.position.y);
+          window_node.width = Val::Px(window.size.x);
+          window_node.height = Val::Px(window.size.y);
+          
+          // Hide content and resize handles
+          hide_window_children(event.window_entity, &children_query, &mut content_query, &mut resize_handle_query, false);
+          hide_resize_handles(event.window_entity, &children_query, &mut resize_handle_query, false);
+        } else {
+          // Restore the window from minimized state
+          window.position = window.pre_minimized_position;
+          window.size = window.pre_minimized_size;
+          window.state = WindowState::Normal;
+          window.minimize_slot = None;
+          
+          // Bring window to front
+          window.z_index = window_manager.next_z_index;
+          window_manager.next_z_index += 1;
+          
+          // Update the UI node
+          window_node.left = Val::Px(window.position.x);
+          window_node.top = Val::Px(window.position.y);
+          window_node.width = Val::Px(window.size.x);
+          window_node.height = Val::Px(window.size.y);
+          
+          // Show content and resize handles
+          hide_window_children(event.window_entity, &children_query, &mut content_query, &mut resize_handle_query, true);
+          hide_resize_handles(event.window_entity, &children_query, &mut resize_handle_query, true);
+        }
+      }
+    }
+  }
 }
 
 // Helper functions <================================================================= |
@@ -1591,6 +1691,25 @@ fn calculate_resize_snap_position(
   result
 }
 
+fn calculate_minimize_position(slot: usize, screen_width: f32, screen_height: f32) -> Vec2 {
+  let taskbar_width = 200.0;
+  let taskbar_height = 30.0;
+  let taskbar_margin = 5.0;
+  
+  // Calculate how many windows fit per row
+  let windows_per_row = ((screen_width - taskbar_margin) / (taskbar_width + taskbar_margin)).floor() as usize;
+  
+  // Calculate row and column
+  let row = slot / windows_per_row;
+  let col = slot % windows_per_row;
+  
+  // Calculate position (from bottom-left, going right then up)
+  let x = taskbar_margin + col as f32 * (taskbar_width + taskbar_margin);
+  let y = screen_height - taskbar_height - taskbar_margin - (row as f32 * (taskbar_height + taskbar_margin));
+  
+  Vec2::new(x, y)
+}
+
 // Plugin < ========================================================================== |
 pub struct WindowPlugin;
 
@@ -1618,6 +1737,7 @@ impl Plugin for WindowPlugin {
         handle_window_buttons,
         handle_window_collapse,
         handle_window_maximize,
+        handle_window_minimize,
         update_window_z_order,
         handle_window_close,
       ).chain());
