@@ -1472,55 +1472,53 @@ fn calculate_resize_snap_position(
     }
   }
 
-  // Window-to-window corner snapping during resize
+  // Window-to-window corner snapping during resize - only check relevant corners
   if !result.snapped {
-    for &corner_index in &corners_to_check {
-      let corner = window_corners[corner_index];
-      
-      for (other_pos, other_size) in other_windows {
-        let other_corners = [
-          *other_pos,                                           // Other top-left
-          Vec2::new(other_pos.x + other_size.x, other_pos.y),  // Other top-right
-          Vec2::new(other_pos.x, other_pos.y + other_size.y),  // Other bottom-left
-          *other_pos + *other_size,                             // Other bottom-right
-        ];
+    for (other_pos, other_size) in other_windows {
+      let other_corners = [
+        *other_pos,                                           // Other top-left
+        Vec2::new(other_pos.x + other_size.x, other_pos.y),  // Other top-right
+        Vec2::new(other_pos.x, other_pos.y + other_size.y),  // Other bottom-left
+        *other_pos + *other_size,                             // Other bottom-right
+      ];
 
-        for (corner_index, &corner) in window_corners.iter().enumerate() {
-          for other_corner in other_corners {
-            let corner_distance = (corner - other_corner).length();
-            if corner_distance <= snap_threshold {
-              // Apply the snap based on which corner matched
-              match corner_index {
-                0 => { // Top-left corner snapped
-                  let size_change = window_pos - other_corner;
-                  final_position = other_corner;
-                  final_size = window_size + size_change;
-                }
-                1 => { // Top-right corner snapped
-                  let new_width = other_corner.x - window_pos.x;
-                  let size_change_y = window_pos.y - other_corner.y;
-                  final_position.y = other_corner.y;
-                  final_size.x = new_width;
-                  final_size.y = window_size.y + size_change_y;
-                }
-                2 => { // Bottom-left corner snapped
-                  let size_change_x = window_pos.x - other_corner.x;
-                  let new_height = other_corner.y - window_pos.y;
-                  final_position.x = other_corner.x;
-                  final_size.x = window_size.x + size_change_x;
-                  final_size.y = new_height;
-                }
-                3 => { // Bottom-right corner snapped
-                  final_size.x = other_corner.x - window_pos.x;
-                  final_size.y = other_corner.y - window_pos.y;
-                }
-                _ => {}
+      // Only check corners that are relevant to the resize handle being used
+      for &corner_index in &corners_to_check {
+        let window_corner = window_corners[corner_index];
+        
+        for other_corner in other_corners {
+          let corner_distance = (window_corner - other_corner).length();
+          if corner_distance <= snap_threshold {
+            // Apply the snap based on which corner matched
+            match corner_index {
+              0 => { // Top-left corner snapped
+                let size_change = window_pos - other_corner;
+                final_position = other_corner;
+                final_size = window_size + size_change;
               }
-              result.snapped = true;
-              break;
+              1 => { // Top-right corner snapped
+                let new_width = other_corner.x - window_pos.x;
+                let size_change_y = window_pos.y - other_corner.y;
+                final_position.y = other_corner.y;
+                final_size.x = new_width;
+                final_size.y = window_size.y + size_change_y;
+              }
+              2 => { // Bottom-left corner snapped
+                let size_change_x = window_pos.x - other_corner.x;
+                let new_height = other_corner.y - window_pos.y;
+                final_position.x = other_corner.x;
+                final_size.x = window_size.x + size_change_x;
+                final_size.y = new_height;
+              }
+              3 => { // Bottom-right corner snapped
+                final_size.x = other_corner.x - window_pos.x;
+                final_size.y = other_corner.y - window_pos.y;
+              }
+              _ => {}
             }
+            result.snapped = true;
+            break;
           }
-          if result.snapped { break; }
         }
         if result.snapped { break; }
       }
