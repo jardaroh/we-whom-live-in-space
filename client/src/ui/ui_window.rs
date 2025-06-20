@@ -631,6 +631,19 @@ fn update_window_z_order(
   }
 }
 
+fn handle_window_close(
+    mut close_events: EventReader<WindowCloseEvent>,
+    mut commands: Commands,
+    window_query: Query<Entity, With<Window>>,
+) {
+    for event in close_events.read() {
+        if let Ok(window_entity) = window_query.get(event.window_entity) {
+            // Despawn the window and all its children recursively
+            commands.entity(window_entity).despawn();
+        }
+    }
+}
+
 // Helper functions <================================================================= |
 pub fn create_window(
   commands: &mut Commands,
@@ -1366,6 +1379,7 @@ impl Plugin for WindowPlugin {
         handle_window_snap,
         handle_window_buttons,
         update_window_z_order,
+        handle_window_close,
       ).chain());
   }
 }
