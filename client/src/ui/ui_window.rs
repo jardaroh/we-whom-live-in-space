@@ -107,6 +107,9 @@ pub struct Window {
   pub drag_handle: Option<ResizeHandle>,
   pub is_collapsed: bool,
   pub uncollapsed_size: Vec2,
+  pub is_maximized: bool,
+  pub pre_maximized_size: Vec2,
+  pub pre_maximized_position: Vec2,
 }
 
 impl Default for Window {
@@ -121,6 +124,9 @@ impl Default for Window {
       drag_handle: None,
       is_collapsed: false,
       uncollapsed_size: Vec2::new(800.0, 600.0),
+      is_maximized: false,
+      pre_maximized_size: Vec2::new(800.0, 600.0),
+      pre_maximized_position: Vec2::new(100.0, 100.0),
     }
   }
 }
@@ -320,13 +326,19 @@ fn handle_window_drag(
     mut window_manager: ResMut<WindowManager>,
 ) {
   for event in drag_events.read() {
+    if let Ok((window, _)) = window_query.get(event.window_entity) {
+      if window.is_maximized {
+        continue; // Skip dragging for maximized windows
+      }
+    }
+    
     if let Ok(window) = primary_window.single() {
       if let Some(cursor_pos) = window.cursor_position() {
         *last_cursor_pos = Some(cursor_pos);
 
         if let Ok((mut win, _)) = window_query.get_mut(event.window_entity) {
           win.drag_offset = cursor_pos - win.position;
-          win.drag_handle = Some(ResizeHandle::None); // Use None to indicate dragging
+          win.drag_handle = Some(ResizeHandle::None);
           window_manager.is_dragging_window = true;
           window_manager.dragging_window_entity = Some(event.window_entity);
         }
@@ -346,8 +358,8 @@ fn handle_window_drag(
           let mut other_windows: Vec<(Vec2, Vec2)> = Vec::new();
           let dragging_entity = window_manager.dragging_window_entity;
 
-          for (mut win, _) in window_query.iter() {
-            if win.drag_handle == Some(ResizeHandle::None) {
+          for (win, _) in window_query.iter() {
+            if win.drag_handle == Some(ResizeHandle::None) || win.is_maximized {
               continue;
             }
             if let Some(dragging) = dragging_entity {
@@ -359,7 +371,7 @@ fn handle_window_drag(
           }
 
           for (mut win, mut node) in window_query.iter_mut() {
-            if win.drag_handle == Some(ResizeHandle::None) {
+            if win.drag_handle == Some(ResizeHandle::None) && !win.is_maximized {
               let proposed_position = win.position + delta;
 
               let final_position = if window_manager.snap_enabled {
@@ -391,10 +403,10 @@ fn handle_window_drag(
   } else {
     for (mut win, _) in window_query.iter_mut() {
       if win.drag_handle == Some(ResizeHandle::None) {
-        win.drag_handle = None; // Reset drag handle when mouse button is released
+        win.drag_handle = None;
       }
     }
-    *last_cursor_pos = None; // Reset last cursor position
+    *last_cursor_pos = None;
     window_manager.is_dragging_window = false;
     window_manager.dragging_window_entity = None;
   }
@@ -424,7 +436,7 @@ fn handle_window_resize(
   // Start resize
   for event in resize_events.read() {
     if let Ok((window, _)) = window_query.get(event.window_entity) {
-      if window.is_collapsed {
+      if window.is_collapsed || window.is_maximized {
         continue;
       }
     }
@@ -466,7 +478,7 @@ fn handle_window_resize(
           }
 
           for (mut win, mut node) in window_query.iter_mut() {
-            if win.is_collapsed {
+            if win.is_collapsed || win.is_maximized {
               continue; // Skip resizing collapsed windows
             }
 
@@ -693,6 +705,65 @@ fn handle_window_collapse(
     }
 }
 
+fn handle_window_maximize(
+    mut maximize_events: EventReader<WindowMaximizeEvent>,
+    mut window_query: Query<(&mut Window, &mut Node)>,
+    mut content_query: Query<&mut Visibility, (With<WindowContent>, Without<Window>)>,
+    mut resize_handle_query: Query<&mut Visibility, (With<WindowResizeHandle>, Without<Window>, Without<WindowContent>)>,
+    children_query: Query<&Children>,
+    primary_window: Query<&bevy::window::Window, With<bevy::window::PrimaryWindow>>,
+) {
+    for event in maximize_events.read() {
+        if let Ok((mut window, mut window_node)) = window_query.get_mut(event.window_entity) {
+            if let Ok(screen) = primary_window.single() {
+                window.is_maximized = !window.is_maximized;
+                
+                if window.is_maximized {
+                    // Store the current size and position before maximizing
+                    window.pre_maximized_size = window.size;
+                    window.pre_maximized_position = window.position;
+                    
+                    // If the window is collapsed, also store the uncollapsed size and expand it
+                    if window.is_collapsed {
+                        window.is_collapsed = false;
+                        window.uncollapsed_size = window.pre_maximized_size;
+                        // Show content when maximizing a collapsed window
+                        hide_window_children(event.window_entity, &children_query, &mut content_query, &mut resize_handle_query, true);
+                    }
+                    
+                    // Set to fullscreen
+                    window.position = Vec2::ZERO;
+                    window.size = Vec2::new(screen.width(), screen.height());
+                    window.state = WindowState::Maximized;
+                    
+                    // Update the UI node
+                    window_node.left = Val::Px(0.0);
+                    window_node.top = Val::Px(0.0);
+                    window_node.width = Val::Px(screen.width());
+                    window_node.height = Val::Px(screen.height());
+                    
+                    // Hide resize handles when maximized
+                    hide_resize_handles(event.window_entity, &children_query, &mut resize_handle_query, false);
+                } else {
+                    // Restore the original size and position
+                    window.position = window.pre_maximized_position;
+                    window.size = window.pre_maximized_size;
+                    window.state = WindowState::Normal;
+                    
+                    // Update the UI node
+                    window_node.left = Val::Px(window.position.x);
+                    window_node.top = Val::Px(window.position.y);
+                    window_node.width = Val::Px(window.size.x);
+                    window_node.height = Val::Px(window.size.y);
+                    
+                    // Show resize handles when unmaximized
+                    hide_resize_handles(event.window_entity, &children_query, &mut resize_handle_query, true);
+                }
+            }
+        }
+    }
+}
+
 // Helper functions <================================================================= |
 pub fn create_window(
   commands: &mut Commands,
@@ -811,6 +882,31 @@ pub fn create_window(
     ));
   }).id();
 
+  let maximize_button = commands.spawn((
+    Node {
+      width: Val::Px(20.0),
+      height: Val::Px(20.0),
+      justify_content: JustifyContent::Center,
+      align_items: AlignItems::Center,
+      ..default()
+    },
+    BackgroundColor(Color::srgb(0.6, 0.6, 0.6)),
+    BorderRadius::all(Val::Px(2.0)),
+    Interaction::default(),
+    WindowMaximizeButton {
+      window_entity,
+    },
+  )).with_children(|parent| {
+    parent.spawn((
+      Text::new("□"), // Square symbol for maximize
+      TextFont {
+        font_size: 12.0,
+        ..default()
+      },
+      TextColor(Color::srgb(0.9, 0.9, 0.9)),
+    ));
+  }).id();
+
   let close_button = commands.spawn((
     Node {
       width: Val::Px(20.0),
@@ -870,7 +966,7 @@ pub fn create_window(
   let left_handle = create_edge_resize_handle(commands, window_entity, ResizeHandle::Left, Vec2::new(resize_handle_size, size.y - 2.0 * resize_handle_size), Vec2::new(0.0, resize_handle_size));
   let right_handle = create_edge_resize_handle(commands, window_entity, ResizeHandle::Right, Vec2::new(resize_handle_size, size.y - 2.0 * resize_handle_size), Vec2::new(size.x - resize_handle_size, resize_handle_size));
 
-  commands.entity(buttons_container).add_children(&[collapse_button, minimize_button, close_button]);
+  commands.entity(buttons_container).add_children(&[collapse_button, minimize_button, maximize_button, close_button]);
   commands.entity(title_bar).add_children(&[title_text, buttons_container]);
   commands.entity(window_entity).add_children(&[
     title_bar,
@@ -990,6 +1086,38 @@ fn hide_window_children_recursive(
             
             // Continue recursively
             hide_window_children_recursive(child, children_query, content_query, resize_handle_query, visibility);
+        }
+    }
+}
+
+fn hide_resize_handles(
+    window_entity: Entity,
+    children_query: &Query<&Children>,
+    resize_handle_query: &mut Query<&mut Visibility, (With<WindowResizeHandle>, Without<Window>, Without<WindowContent>)>,
+    show: bool,
+) {
+    let visibility = if show { Visibility::Inherited } else { Visibility::Hidden };
+    
+    // Find all descendants of the window
+    let mut to_check = vec![window_entity];
+    let mut checked = std::collections::HashSet::new();
+    
+    while let Some(entity) = to_check.pop() {
+        if checked.contains(&entity) {
+            continue;
+        }
+        checked.insert(entity);
+        
+        // Check if this entity is a resize handle
+        if let Ok(mut handle_visibility) = resize_handle_query.get_mut(entity) {
+            *handle_visibility = visibility;
+        }
+        
+        // Add children to check list
+        if let Ok(children) = children_query.get(entity) {
+            for child in children.iter() {
+                to_check.push(child);
+            }
         }
     }
 }
@@ -1506,6 +1634,7 @@ impl Plugin for WindowPlugin {
         handle_window_snap,
         handle_window_buttons,
         handle_window_collapse,
+        handle_window_maximize,
         update_window_z_order,
         handle_window_close,
       ).chain());
