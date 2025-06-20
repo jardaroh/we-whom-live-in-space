@@ -24,4 +24,12 @@ pub fn ui_sandbox(
     Vec2::new(250.0, 150.0),
     Vec2::new(200.0, 200.0),
   );
+
+  create_window(
+    &mut commands,
+    &mut window_manager,
+    "Third Window",
+    Vec2::new(350.0, 200.0),
+    Vec2::new(300.0, 250.0),
+  );
 }

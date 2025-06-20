@@ -923,82 +923,140 @@ fn calculate_drag_snap_position(
   let mut result = SnapResult::new(window_pos, window_size);
   let mut snap_offset = Vec2::ZERO;
   
-  // Screen edge snapping for dragging
+  // Calculate window edges and corners
   let left_edge = window_pos.x;
   let right_edge = window_pos.x + window_size.x;
   let top_edge = window_pos.y;
   let bottom_edge = window_pos.y + window_size.y;
   
-  // Snap to screen edges
-  if left_edge.abs() <= snap_threshold {
-    snap_offset.x = -left_edge;
-    result.snap_edges.left = true;
-    result.snapped = true;
-  } else if (right_edge - screen_size.x).abs() <= snap_threshold {
-    snap_offset.x = screen_size.x - right_edge;
-    result.snap_edges.right = true;
-    result.snapped = true;
-  }
+  let window_corners = [
+    window_pos,                                    // Top-left
+    Vec2::new(right_edge, top_edge),              // Top-right
+    Vec2::new(left_edge, bottom_edge),            // Bottom-left
+    Vec2::new(right_edge, bottom_edge),           // Bottom-right
+  ];
   
-  if top_edge.abs() <= snap_threshold {
-    snap_offset.y = -top_edge;
-    result.snap_edges.top = true;
-    result.snapped = true;
-  } else if (bottom_edge - screen_size.y).abs() <= snap_threshold {
-    snap_offset.y = screen_size.y - bottom_edge;
-    result.snap_edges.bottom = true;
-    result.snapped = true;
-  }
+  // Screen corner snapping - any window corner can snap to any screen corner
+  let screen_corners = [
+    Vec2::ZERO,                          // Top-left screen corner
+    Vec2::new(screen_size.x, 0.0),       // Top-right screen corner
+    Vec2::new(0.0, screen_size.y),       // Bottom-left screen corner
+    screen_size,                         // Bottom-right screen corner
+  ];
   
-  // Window-to-window snapping for dragging
-  for (other_pos, other_size) in other_windows {
-    let other_left = other_pos.x;
-    let other_right = other_pos.x + other_size.x;
-    let other_top = other_pos.y;
-    let other_bottom = other_pos.y + other_size.y;
-    
-    // Check if windows overlap vertically (for horizontal snapping)
-    let vertical_overlap = !(bottom_edge <= other_top || top_edge >= other_bottom);
-    if vertical_overlap {
-      // Snap to left edge of other window
-      if (left_edge - other_right).abs() <= snap_threshold {
-        snap_offset.x = other_right - left_edge;
-        result.snap_edges.left = true;
+  for screen_corner in screen_corners {
+    for window_corner in window_corners {
+      let corner_distance = (window_corner - screen_corner).length();
+      if corner_distance <= snap_threshold {
+        let corner_offset = screen_corner - window_corner;
+        snap_offset = corner_offset;
         result.snapped = true;
-      }
-      // Snap to right edge of other window
-      else if (right_edge - other_left).abs() <= snap_threshold {
-        snap_offset.x = other_left - right_edge;
-        result.snap_edges.right = true;
-        result.snapped = true;
+        break;
       }
     }
+    if result.snapped { break; }
+  }
+  
+  // Screen edge snapping (only if not corner snapped)
+  if !result.snapped {
+    if left_edge.abs() <= snap_threshold {
+      snap_offset.x = -left_edge;
+      result.snap_edges.left = true;
+      result.snapped = true;
+    } else if (right_edge - screen_size.x).abs() <= snap_threshold {
+      snap_offset.x = screen_size.x - right_edge;
+      result.snap_edges.right = true;
+      result.snapped = true;
+    }
     
-    // Check if windows overlap horizontally (for vertical snapping)
-    let horizontal_overlap = !(right_edge <= other_left || left_edge >= other_right);
-    if horizontal_overlap {
-      // Snap to top edge of other window
-      if (top_edge - other_bottom).abs() <= snap_threshold {
-        snap_offset.y = other_bottom - top_edge;
-        result.snap_edges.top = true;
-        result.snapped = true;
+    if top_edge.abs() <= snap_threshold {
+      snap_offset.y = -top_edge;
+      result.snap_edges.top = true;
+      result.snapped = true;
+    } else if (bottom_edge - screen_size.y).abs() <= snap_threshold {
+      snap_offset.y = screen_size.y - bottom_edge;
+      result.snap_edges.bottom = true;
+      result.snapped = true;
+    }
+  }
+  
+  // Window-to-window corner snapping - any corner to any corner (only if not already snapped)
+  if !result.snapped {
+    for (other_pos, other_size) in other_windows {
+      let other_corners = [
+        *other_pos,                                           // Other top-left
+        Vec2::new(other_pos.x + other_size.x, other_pos.y),  // Other top-right
+        Vec2::new(other_pos.x, other_pos.y + other_size.y),  // Other bottom-left
+        *other_pos + *other_size,                             // Other bottom-right
+      ];
+      
+      for other_corner in other_corners {
+        for window_corner in window_corners {
+          let corner_distance = (window_corner - other_corner).length();
+          if corner_distance <= snap_threshold {
+            let corner_offset = other_corner - window_corner;
+            snap_offset = corner_offset;
+            result.snapped = true;
+            break;
+          }
+        }
+        if result.snapped { break; }
       }
-      // Snap to bottom edge of other window
-      else if (bottom_edge - other_top).abs() <= snap_threshold {
-        snap_offset.y = other_top - bottom_edge;
-        result.snap_edges.bottom = true;
-        result.snapped = true;
+      if result.snapped { break; }
+    }
+  }
+  
+  // Window-to-window edge snapping (only if not corner snapped)
+  if !result.snapped {
+    for (other_pos, other_size) in other_windows {
+      let other_left = other_pos.x;
+      let other_right = other_pos.x + other_size.x;
+      let other_top = other_pos.y;
+      let other_bottom = other_pos.y + other_size.y;
+      
+      // Check if windows overlap vertically (for horizontal snapping)
+      let vertical_overlap = !(bottom_edge <= other_top || top_edge >= other_bottom);
+      if vertical_overlap {
+        // Snap to left edge of other window
+        if (left_edge - other_right).abs() <= snap_threshold {
+          snap_offset.x = other_right - left_edge;
+          result.snap_edges.left = true;
+          result.snapped = true;
+        }
+        // Snap to right edge of other window
+        else if (right_edge - other_left).abs() <= snap_threshold {
+          snap_offset.x = other_left - right_edge;
+          result.snap_edges.right = true;
+          result.snapped = true;
+        }
       }
+      
+      // Check if windows overlap horizontally (for vertical snapping)
+      let horizontal_overlap = !(right_edge <= other_left || left_edge >= other_right);
+      if horizontal_overlap {
+        // Snap to top edge of other window
+        if (top_edge - other_bottom).abs() <= snap_threshold {
+          snap_offset.y = other_bottom - top_edge;
+          result.snap_edges.top = true;
+          result.snapped = true;
+        }
+        // Snap to bottom edge of other window
+        else if (bottom_edge - other_top).abs() <= snap_threshold {
+          snap_offset.y = other_top - bottom_edge;
+          result.snap_edges.bottom = true;
+          result.snapped = true;
+        }
+      }
+
+      if result.snapped { break; }
     }
   }
   
   result.position = window_pos + snap_offset;
-  // Don't change size for drag snapping
   result.size = window_size;
   result
 }
 
-// Fixed resize snapping function
 fn calculate_resize_snap_position(
   window_pos: Vec2,
   window_size: Vec2,
@@ -1016,104 +1074,264 @@ fn calculate_resize_snap_position(
   let top_edge = window_pos.y;
   let bottom_edge = window_pos.y + window_size.y;
 
-  // Screen edge snapping for resize - ONLY affect the edge being dragged
-  match handle_type {
-    ResizeHandle::Right | ResizeHandle::TopRight | ResizeHandle::BottomRight => {
-      if (right_edge - screen_size.x).abs() <= snap_threshold {
-        final_size.x = screen_size.x - window_pos.x; // Snap right edge to screen edge
-        result.snap_edges.right = true;
-        result.snapped = true;
-      }
-    }
-    ResizeHandle::Left | ResizeHandle::TopLeft | ResizeHandle::BottomLeft => {
-      if left_edge.abs() <= snap_threshold {
-        let new_width = window_size.x + window_pos.x; // Maintain right edge position
-        final_position.x = 0.0; // Snap left edge to screen edge
-        final_size.x = new_width;
-        result.snap_edges.left = true;
-        result.snapped = true;
-      }
-    }
-    _ => {}
-  }
+  // Calculate all corners of the window
+  let window_corners = [
+    window_pos,                                    // Top-left [0]
+    Vec2::new(right_edge, top_edge),              // Top-right [1]
+    Vec2::new(left_edge, bottom_edge),            // Bottom-left [2]
+    Vec2::new(right_edge, bottom_edge),           // Bottom-right [3]
+  ];
 
-  match handle_type {
-    ResizeHandle::Bottom | ResizeHandle::BottomLeft | ResizeHandle::BottomRight => {
-      if (bottom_edge - screen_size.y).abs() <= snap_threshold {
-        final_size.y = screen_size.y - window_pos.y; // Snap bottom edge to screen edge
-        result.snap_edges.bottom = true;
-        result.snapped = true;
-      }
-    }
-    ResizeHandle::Top | ResizeHandle::TopLeft | ResizeHandle::TopRight => {
-      if top_edge.abs() <= snap_threshold {
-        let new_height = window_size.y + window_pos.y; // Maintain bottom edge position
-        final_position.y = 0.0; // Snap top edge to screen edge
-        final_size.y = new_height;
-        result.snap_edges.top = true;
-        result.snapped = true;
-      }
-    }
-    _ => {}
-  }
+  // Screen corner snapping - check corners based on which handle is being used
+  let screen_corners = [
+    Vec2::ZERO,                          // Top-left screen corner
+    Vec2::new(screen_size.x, 0.0),       // Top-right screen corner
+    Vec2::new(0.0, screen_size.y),       // Bottom-left screen corner
+    screen_size,                         // Bottom-right screen corner
+  ];
 
-  // Window-to-window snapping for resize - ONLY affect the edge being dragged
-  for (other_pos, other_size) in other_windows {
-    let other_left = other_pos.x;
-    let other_right = other_pos.x + other_size.x;
-    let other_top = other_pos.y;
-    let other_bottom = other_pos.y + other_size.y;
+  // Determine which corners to check based on the resize handle
+  let corners_to_check: Vec<usize> = match handle_type {
+    ResizeHandle::TopLeft => vec![0],       // Only check top-left corner
+    ResizeHandle::TopRight => vec![1],      // Only check top-right corner
+    ResizeHandle::BottomLeft => vec![2],    // Only check bottom-left corner
+    ResizeHandle::BottomRight => vec![3],   // Only check bottom-right corner
+    ResizeHandle::Top => vec![0, 1],        // Check both top corners
+    ResizeHandle::Bottom => vec![2, 3],     // Check both bottom corners
+    ResizeHandle::Left => vec![0, 2],       // Check both left corners
+    ResizeHandle::Right => vec![1, 3],      // Check both right corners
+    _ => vec![],
+  };
 
-    // Horizontal snapping
-    let vertical_overlap = !(bottom_edge <= other_top || top_edge >= other_bottom);
-    if vertical_overlap {
-      match handle_type {
-        ResizeHandle::Right | ResizeHandle::TopRight | ResizeHandle::BottomRight => {
-          // When resizing right, snap to left edge of other window
-          if (right_edge - other_left).abs() <= snap_threshold {
-            final_size.x = other_left - window_pos.x; // Snap right edge to other window's left edge
-            result.snap_edges.right = true;
-            result.snapped = true;
+  // Screen corner snapping
+  for &corner_index in &corners_to_check {
+    let corner = window_corners[corner_index];
+    for screen_corner in screen_corners {
+      let corner_distance = (corner - screen_corner).length();
+      if corner_distance <= snap_threshold {
+        // Apply the snap based on which corner and handle
+        match (handle_type, corner_index) {
+          // Corner handles
+          (ResizeHandle::TopLeft, 0) => {
+            let size_change = window_pos - screen_corner;
+            final_position = screen_corner;
+            final_size = window_size + size_change;
           }
-        }
-        ResizeHandle::Left | ResizeHandle::TopLeft | ResizeHandle::BottomLeft => {
-          // When resizing left, snap to right edge of other window
-          if (left_edge - other_right).abs() <= snap_threshold {
-            let new_width = (window_pos.x + window_size.x) - other_right; // Maintain right edge
-            final_position.x = other_right; // Snap left edge to other window's right edge
+          (ResizeHandle::TopRight, 1) => {
+            let new_width = screen_corner.x - window_pos.x;
+            let size_change_y = window_pos.y - screen_corner.y;
+            final_position.y = screen_corner.y;
             final_size.x = new_width;
-            result.snap_edges.left = true;
-            result.snapped = true;
+            final_size.y = window_size.y + size_change_y;
           }
+          (ResizeHandle::BottomLeft, 2) => {
+            let size_change_x = window_pos.x - screen_corner.x;
+            let new_height = screen_corner.y - window_pos.y;
+            final_position.x = screen_corner.x;
+            final_size.x = window_size.x + size_change_x;
+            final_size.y = new_height;
+          }
+          (ResizeHandle::BottomRight, 3) => {
+            final_size.x = screen_corner.x - window_pos.x;
+            final_size.y = screen_corner.y - window_pos.y;
+          }
+          // Edge handles with corners
+          (ResizeHandle::Top, 0) | (ResizeHandle::Top, 1) => {
+            let size_change_y = window_pos.y - screen_corner.y;
+            final_position.y = screen_corner.y;
+            final_size.y = window_size.y + size_change_y;
+          }
+          (ResizeHandle::Bottom, 2) | (ResizeHandle::Bottom, 3) => {
+            final_size.y = screen_corner.y - window_pos.y;
+          }
+          (ResizeHandle::Left, 0) | (ResizeHandle::Left, 2) => {
+            let size_change_x = window_pos.x - screen_corner.x;
+            final_position.x = screen_corner.x;
+            final_size.x = window_size.x + size_change_x;
+          }
+          (ResizeHandle::Right, 1) | (ResizeHandle::Right, 3) => {
+            final_size.x = screen_corner.x - window_pos.x;
+          }
+          _ => {}
         }
-        _ => {}
+        result.snapped = true;
+        break;
       }
     }
+    if result.snapped { break; }
+  }
 
-    // Vertical snapping
-    let horizontal_overlap = !(right_edge <= other_left || left_edge >= other_right);
-    if horizontal_overlap {
-      match handle_type {
-        ResizeHandle::Bottom | ResizeHandle::BottomLeft | ResizeHandle::BottomRight => {
-          // When resizing bottom, snap to top edge of other window
-          if (bottom_edge - other_top).abs() <= snap_threshold {
-            final_size.y = other_top - window_pos.y; // Snap bottom edge to other window's top edge
-            result.snap_edges.bottom = true;
-            result.snapped = true;
-          }
+  // Screen edge snapping for resize (only if not corner snapped)
+  if !result.snapped {
+    match handle_type {
+      ResizeHandle::Right | ResizeHandle::TopRight | ResizeHandle::BottomRight => {
+        if (right_edge - screen_size.x).abs() <= snap_threshold {
+          final_size.x = screen_size.x - window_pos.x;
+          result.snap_edges.right = true;
+          result.snapped = true;
         }
-        ResizeHandle::Top | ResizeHandle::TopLeft | ResizeHandle::TopRight => {
-          // When resizing top, snap to bottom edge of other window
-          if (top_edge - other_bottom).abs() <= snap_threshold {
-            let new_height = (window_pos.y + window_size.y) - other_bottom; // Maintain bottom edge
-            final_position.y = other_bottom; // Snap top edge to other window's bottom edge
-            final_size.y = new_height;
-            result.snap_edges.top = true;
-            result.snapped = true;
-          }
-        }
-        _ => {}
       }
+      ResizeHandle::Left | ResizeHandle::TopLeft | ResizeHandle::BottomLeft => {
+        if left_edge.abs() <= snap_threshold {
+          let new_width = window_size.x + window_pos.x;
+          final_position.x = 0.0;
+          final_size.x = new_width;
+          result.snap_edges.left = true;
+          result.snapped = true;
+        }
+      }
+      _ => {}
+    }
+
+    match handle_type {
+      ResizeHandle::Bottom | ResizeHandle::BottomLeft | ResizeHandle::BottomRight => {
+        if (bottom_edge - screen_size.y).abs() <= snap_threshold {
+          final_size.y = screen_size.y - window_pos.y;
+          result.snap_edges.bottom = true;
+          result.snapped = true;
+        }
+      }
+      ResizeHandle::Top | ResizeHandle::TopLeft | ResizeHandle::TopRight => {
+        if top_edge.abs() <= snap_threshold {
+          let new_height = window_size.y + window_pos.y;
+          final_position.y = 0.0;
+          final_size.y = new_height;
+          result.snap_edges.top = true;
+          result.snapped = true;
+        }
+      }
+      _ => {}
+    }
+  }
+
+  // Window-to-window corner snapping during resize
+  if !result.snapped {
+    for &corner_index in &corners_to_check {
+      let corner = window_corners[corner_index];
+      
+      for (other_pos, other_size) in other_windows {
+        let other_corners = [
+          *other_pos,                                           // Other top-left
+          Vec2::new(other_pos.x + other_size.x, other_pos.y),  // Other top-right
+          Vec2::new(other_pos.x, other_pos.y + other_size.y),  // Other bottom-left
+          *other_pos + *other_size,                             // Other bottom-right
+        ];
+
+        for other_corner in other_corners {
+          let corner_distance = (corner - other_corner).length();
+          if corner_distance <= snap_threshold {
+            // Apply the snap based on which corner and handle
+            match (handle_type, corner_index) {
+              // Corner handles
+              (ResizeHandle::TopLeft, 0) => {
+                let size_change = window_pos - other_corner;
+                final_position = other_corner;
+                final_size = window_size + size_change;
+              }
+              (ResizeHandle::TopRight, 1) => {
+                let new_width = other_corner.x - window_pos.x;
+                let size_change_y = window_pos.y - other_corner.y;
+                final_position.y = other_corner.y;
+                final_size.x = new_width;
+                final_size.y = window_size.y + size_change_y;
+              }
+              (ResizeHandle::BottomLeft, 2) => {
+                let size_change_x = window_pos.x - other_corner.x;
+                let new_height = other_corner.y - window_pos.y;
+                final_position.x = other_corner.x;
+                final_size.x = window_size.x + size_change_x;
+                final_size.y = new_height;
+              }
+              (ResizeHandle::BottomRight, 3) => {
+                final_size.x = other_corner.x - window_pos.x;
+                final_size.y = other_corner.y - window_pos.y;
+              }
+              // Edge handles with corners
+              (ResizeHandle::Top, 0) | (ResizeHandle::Top, 1) => {
+                let size_change_y = window_pos.y - other_corner.y;
+                final_position.y = other_corner.y;
+                final_size.y = window_size.y + size_change_y;
+              }
+              (ResizeHandle::Bottom, 2) | (ResizeHandle::Bottom, 3) => {
+                final_size.y = other_corner.y - window_pos.y;
+              }
+              (ResizeHandle::Left, 0) | (ResizeHandle::Left, 2) => {
+                let size_change_x = window_pos.x - other_corner.x;
+                final_position.x = other_corner.x;
+                final_size.x = window_size.x + size_change_x;
+              }
+              (ResizeHandle::Right, 1) | (ResizeHandle::Right, 3) => {
+                final_size.x = other_corner.x - window_pos.x;
+              }
+              _ => {}
+            }
+            result.snapped = true;
+            break;
+          }
+        }
+        if result.snapped { break; }
+      }
+      if result.snapped { break; }
+    }
+  }
+
+  // Window-to-window edge snapping (only if not corner snapped)
+  if !result.snapped {
+    for (other_pos, other_size) in other_windows {
+      let other_left = other_pos.x;
+      let other_right = other_pos.x + other_size.x;
+      let other_top = other_pos.y;
+      let other_bottom = other_pos.y + other_size.y;
+
+      // Horizontal snapping
+      let vertical_overlap = !(bottom_edge <= other_top || top_edge >= other_bottom);
+      if vertical_overlap {
+        match handle_type {
+          ResizeHandle::Right | ResizeHandle::TopRight | ResizeHandle::BottomRight => {
+            if (right_edge - other_left).abs() <= snap_threshold {
+              final_size.x = other_left - window_pos.x;
+              result.snap_edges.right = true;
+              result.snapped = true;
+            }
+          }
+          ResizeHandle::Left | ResizeHandle::TopLeft | ResizeHandle::BottomLeft => {
+            if (left_edge - other_right).abs() <= snap_threshold {
+              let new_width = (window_pos.x + window_size.x) - other_right;
+              final_position.x = other_right;
+              final_size.x = new_width;
+              result.snap_edges.left = true;
+              result.snapped = true;
+            }
+          }
+          _ => {}
+        }
+      }
+
+      // Vertical snapping
+      let horizontal_overlap = !(right_edge <= other_left || left_edge >= other_right);
+      if horizontal_overlap {
+        match handle_type {
+          ResizeHandle::Bottom | ResizeHandle::BottomLeft | ResizeHandle::BottomRight => {
+            if (bottom_edge - other_top).abs() <= snap_threshold {
+              final_size.y = other_top - window_pos.y;
+              result.snap_edges.bottom = true;
+              result.snapped = true;
+            }
+          }
+          ResizeHandle::Top | ResizeHandle::TopLeft | ResizeHandle::TopRight => {
+            if (top_edge - other_bottom).abs() <= snap_threshold {
+              let new_height = (window_pos.y + window_size.y) - other_bottom;
+              final_position.y = other_bottom;
+              final_size.y = new_height;
+              result.snap_edges.top = true;
+              result.snapped = true;
+            }
+          }
+          _ => {}
+        }
+      }
+
+      if result.snapped { break; }
     }
   }
 
@@ -1121,6 +1339,7 @@ fn calculate_resize_snap_position(
   result.size = final_size;
   result
 }
+
 // Plugin < ========================================================================== |
 pub struct WindowPlugin;
 
