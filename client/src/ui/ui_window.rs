@@ -162,19 +162,46 @@ pub struct WindowManager {
   pub is_dragging_window: bool,
   pub is_resizing_window: bool,
   pub dragging_window_entity: Option<Entity>,
+  pub snap_enabled: bool,
 }
 
 impl Default for WindowManager {
   fn default() -> Self {
     Self {
       next_z_index: 1,
-      snap_threshold: 20.0,
-      snap_zones: vec![
-        SnapZone::new(Vec2::ZERO, Vec2::new(50.0, 50.0)),
-      ],
+      snap_threshold: 4.0,
+      snap_zones: vec![],
       is_dragging_window: false,
       is_resizing_window: false,
       dragging_window_entity: None,
+      snap_enabled: true,
+    }
+  }
+}
+
+#[derive(Debug, Clone)]
+pub struct SnapResult {
+  pub position: Vec2,
+  pub size: Vec2,
+  pub snapped: bool,
+  pub snap_edges: SnapEdges,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SnapEdges {
+  pub left: bool,
+  pub right: bool,
+  pub top: bool,
+  pub bottom: bool,
+}
+
+impl SnapResult {
+  pub fn new(position: Vec2, size: Vec2) -> Self {
+    Self {
+      position,
+      size,
+      snapped: false,
+      snap_edges: SnapEdges::default(),
     }
   }
 }
@@ -308,17 +335,45 @@ fn handle_window_drag(
       if let Some(cursor_pos) = window.cursor_position() {
         if let Some(last_pos) = *last_cursor_pos {
           let delta = cursor_pos - last_pos;
-
           let screen_width = window.width();
           let screen_height = window.height();
+          let screen_size = Vec2::new(screen_width, screen_height);
+
+          let mut other_windows: Vec<(Vec2, Vec2)> = Vec::new();
+          let dragging_entity = window_manager.dragging_window_entity;
+
+          for (mut win, _) in window_query.iter() {
+            if win.drag_handle == Some(ResizeHandle::None) {
+              continue;
+            }
+            if let Some(dragging) = dragging_entity {
+              if win.z_index == window_query.get(dragging).map(|(w, _)| w.z_index).unwrap_or(-1) {
+                continue;
+              }
+            }
+            other_windows.push((win.position, win.size));
+          }
 
           for (mut win, mut node) in window_query.iter_mut() {
             if win.drag_handle == Some(ResizeHandle::None) {
-              let new_position = win.position + delta;
+              let proposed_position = win.position + delta;
+
+              let final_position = if window_manager.snap_enabled {
+                let snap_result = calculate_snap_position(
+                  proposed_position,
+                  win.size,
+                  &other_windows,
+                  screen_size,
+                  window_manager.snap_threshold,
+                );
+                snap_result.position
+              } else {
+                proposed_position
+              };
               
               // Strict clamping - window cannot go outside screen bounds
-              let clamped_x = new_position.x.clamp(0.0, screen_width - win.size.x);
-              let clamped_y = new_position.y.clamp(0.0, screen_height - win.size.y);
+              let clamped_x = final_position.x.clamp(0.0, screen_width - win.size.x);
+              let clamped_y = final_position.y.clamp(0.0, screen_height - win.size.y);
               
               win.position = Vec2::new(clamped_x, clamped_y);
               node.left = Val::Px(win.position.x);
@@ -336,7 +391,6 @@ fn handle_window_drag(
       }
     }
     *last_cursor_pos = None; // Reset last cursor position
-
     window_manager.is_dragging_window = false;
     window_manager.dragging_window_entity = None;
   }
@@ -380,102 +434,122 @@ fn handle_window_resize(
       if let Some(cursor_pos) = window.cursor_position() {
         if let Some(last_pos) = *last_cursor_pos {
           let delta = cursor_pos - last_pos;
-          
           let screen_width = window.width();
           let screen_height = window.height();
+          let screen_size = Vec2::new(screen_width, screen_height);
+
+          let mut other_windows: Vec<(Vec2, Vec2)> = Vec::new();
+          let resizing_entity = window_manager.dragging_window_entity;
+
+          for (win, _) in window_query.iter() {
+            if let Some(handle_type) = win.drag_handle {
+              if handle_type != ResizeHandle::None {
+                continue;
+              }
+            }
+            if let Some(resizing) = resizing_entity {
+              if win.z_index == window_query.get(resizing).map(|(w, _)| w.z_index).unwrap_or(-1) {
+                continue;
+              }
+            }
+            other_windows.push((win.position, win.size));
+          }
 
           for (mut win, mut node) in window_query.iter_mut() {
             if let Some(handle_type) = win.drag_handle {
               if handle_type != ResizeHandle::None { // ResizeHandle::None is for dragging
                 let min_size = Vec2::new(100.0, 80.0); // Minimum window size
+                let mut new_position = win.position;
+                let mut new_size = win.size;
                 
                 match handle_type {
                   ResizeHandle::Right => {
-                    let new_width = (win.size.x + delta.x).max(min_size.x);
+                    new_size.x = (win.size.x + delta.x).max(min_size.x);
                     let max_width = screen_width - win.position.x;
-                    win.size.x = new_width.min(max_width);
+                    new_size.x = new_size.x.min(max_width);
                   }
                   ResizeHandle::Bottom => {
-                    let new_height = (win.size.y + delta.y).max(min_size.y);
+                    new_size.y = (win.size.y + delta.y).max(min_size.y);
                     let max_height = screen_height - win.position.y;
-                    win.size.y = new_height.min(max_height);
+                    new_size.y = new_size.y.min(max_height);
                   }
                   ResizeHandle::BottomRight => {
-                    let new_width = (win.size.x + delta.x).max(min_size.x);
-                    let new_height = (win.size.y + delta.y).max(min_size.y);
+                    new_size.x = (win.size.x + delta.x).max(min_size.x);
+                    new_size.y = (win.size.y + delta.y).max(min_size.y);
                     let max_width = screen_width - win.position.x;
                     let max_height = screen_height - win.position.y;
-                    win.size.x = new_width.min(max_width);
-                    win.size.y = new_height.min(max_height);
+                    new_size.x = new_size.x.min(max_width);
+                    new_size.y = new_size.y.min(max_height);
                   }
                   ResizeHandle::Left => {
-                    let new_width = (win.size.x - delta.x).max(min_size.x);
-                    let new_position_x = win.position.x + (win.size.x - new_width);
-                    if new_position_x >= 0.0 {
-                      win.size.x = new_width;
-                      win.position.x = new_position_x;
-                      // Only update node position for left resize, not in the main update below
-                      node.left = Val::Px(win.position.x);
+                    let proposed_width = (win.size.x - delta.x).max(min_size.x);
+                    new_position.x = win.position.x + (win.size.x - proposed_width);
+                    if new_position.x >= 0.0 {
+                      new_size.x = proposed_width;
                     }
                   }
                   ResizeHandle::Top => {
-                    let new_height = (win.size.y - delta.y).max(min_size.y);
-                    let new_position_y = win.position.y + (win.size.y - new_height);
-                    if new_position_y >= 0.0 {
-                      win.size.y = new_height;
-                      win.position.y = new_position_y;
-                      // Only update node position for top resize, not in the main update below
-                      node.top = Val::Px(win.position.y);
+                    let proposed_height = (win.size.y - delta.y).max(min_size.y);
+                    new_position.y = win.position.y + (win.size.y - proposed_height);
+                    if new_position.y >= 0.0 {
+                      new_size.y = proposed_height;
                     }
                   }
                   ResizeHandle::TopLeft => {
-                    let new_width = (win.size.x - delta.x).max(min_size.x);
-                    let new_height = (win.size.y - delta.y).max(min_size.y);
-                    let new_position_x = win.position.x + (win.size.x - new_width);
-                    let new_position_y = win.position.y + (win.size.y - new_height);
+                    let proposed_width = (win.size.x - delta.x).max(min_size.x);
+                    let proposed_height = (win.size.y - delta.y).max(min_size.y);
+                    let proposed_pos_x = win.position.x + (win.size.x - proposed_width);
+                    let proposed_pos_y = win.position.y + (win.size.y - proposed_height);
                     
-                    if new_position_x >= 0.0 && new_position_y >= 0.0 {
-                      win.size.x = new_width;
-                      win.size.y = new_height;
-                      win.position.x = new_position_x;
-                      win.position.y = new_position_y;
-                      // Update node position for top-left resize
-                      node.left = Val::Px(win.position.x);
-                      node.top = Val::Px(win.position.y);
+                    if proposed_pos_x >= 0.0 && proposed_pos_y >= 0.0 {
+                      new_size.x = proposed_width;
+                      new_size.y = proposed_height;
+                      new_position.x = proposed_pos_x;
+                      new_position.y = proposed_pos_y;
                     }
                   }
                   ResizeHandle::TopRight => {
-                    let new_width = (win.size.x + delta.x).max(min_size.x);
-                    let new_height = (win.size.y - delta.y).max(min_size.y);
-                    let new_position_y = win.position.y + (win.size.y - new_height);
+                    let proposed_width = (win.size.x + delta.x).max(min_size.x);
+                    let proposed_height = (win.size.y - delta.y).max(min_size.y);
+                    let proposed_pos_y = win.position.y + (win.size.y - proposed_height);
                     let max_width = screen_width - win.position.x;
                     
-                    if new_position_y >= 0.0 {
-                      win.size.x = new_width.min(max_width);
-                      win.size.y = new_height;
-                      win.position.y = new_position_y;
-                      // Only update Y position for top-right resize
-                      node.top = Val::Px(win.position.y);
+                    if proposed_pos_y >= 0.0 {
+                      new_size.x = proposed_width.min(max_width);
+                      new_size.y = proposed_height;
+                      new_position.y = proposed_pos_y;
                     }
                   }
                   ResizeHandle::BottomLeft => {
-                    let new_width = (win.size.x - delta.x).max(min_size.x);
-                    let new_height = (win.size.y + delta.y).max(min_size.y);
-                    let new_position_x = win.position.x + (win.size.x - new_width);
+                    let proposed_width = (win.size.x - delta.x).max(min_size.x);
+                    let proposed_height = (win.size.y + delta.y).max(min_size.y);
+                    let proposed_pos_x = win.position.x + (win.size.x - proposed_width);
                     let max_height = screen_height - win.position.y;
                     
-                    if new_position_x >= 0.0 {
-                      win.size.x = new_width;
-                      win.size.y = new_height.min(max_height);
-                      win.position.x = new_position_x;
-                      // Only update X position for bottom-left resize
-                      node.left = Val::Px(win.position.x);
+                    if proposed_pos_x >= 0.0 {
+                      new_size.x = proposed_width;
+                      new_size.y = proposed_height.min(max_height);
+                      new_position.x = proposed_pos_x;
                     }
                   }
                   _ => {}
                 }
+
+                if window_manager.snap_enabled {
+                  let snap_result = calculate_snap_position(
+                    new_position,
+                    new_size,
+                    &other_windows,
+                    screen_size,
+                    window_manager.snap_threshold,
+                  );
+                  new_position = snap_result.position;
+                }
                 
-                // Always update node size (but not position unless specifically handled above)
+                win.position = new_position;
+                win.size = new_size;
+                node.left = Val::Px(win.position.x);
+                node.top = Val::Px(win.position.y);
                 node.width = Val::Px(win.size.x);
                 node.height = Val::Px(win.size.y);
               }
@@ -833,6 +907,82 @@ fn create_edge_resize_handle(
       window_entity,
     },
   )).id()
+}
+
+// Snap functions < ================================================================== |
+fn calculate_snap_position(
+  window_pos: Vec2,
+  window_size: Vec2,
+  other_windows: &[(Vec2, Vec2)],
+  screen_size: Vec2,
+  snap_threshold: f32,
+) -> SnapResult {
+  let mut result = SnapResult::new(window_pos, window_size);
+  let mut snap_offset = Vec2::ZERO;
+
+  // Screen edge snapping
+  let left_edge = window_pos.x;
+  let right_edge = window_pos.x + window_size.x;
+  let top_edge = window_pos.y;
+  let bottom_edge = window_pos.y + window_size.y;
+
+  // Snap to screen edges
+  if left_edge.abs() <= snap_threshold {
+    snap_offset.x = -left_edge;
+    result.snap_edges.left = true;
+    result.snapped = true;
+  } else if (right_edge - screen_size.x).abs() <= snap_threshold {
+    snap_offset.x = screen_size.x - right_edge;
+    result.snap_edges.right = true;
+    result.snapped = true;
+  }
+
+  if top_edge.abs() <= snap_threshold {
+    snap_offset.y = -top_edge;
+    result.snap_edges.top = true;
+    result.snapped = true;
+  } else if (bottom_edge - screen_size.y).abs() <= snap_threshold {
+    snap_offset.y = screen_size.y - bottom_edge;
+    result.snap_edges.bottom = true;
+    result.snapped = true;
+  }
+
+  // Snap to other windows
+  for (other_pos, other_size) in other_windows {
+    let other_left = other_pos.x;
+    let other_right = other_pos.x + other_size.x;
+    let other_top = other_pos.y;
+    let other_bottom = other_pos.y + other_size.y;
+
+    let vertical_overlap = !(bottom_edge <= other_top || top_edge >= other_bottom);
+    if vertical_overlap {
+      if (left_edge - other_right).abs() <= snap_threshold {
+        snap_offset.x = other_right - left_edge;
+        result.snap_edges.left = true;
+        result.snapped = true;
+      } else if (right_edge - other_left).abs() <= snap_threshold {
+        snap_offset.x = other_left - right_edge;
+        result.snap_edges.right = true;
+        result.snapped = true;
+      }
+    }
+
+    let horizontal_overlap = !(right_edge <= other_left || left_edge >= other_right);
+    if horizontal_overlap {
+      if (top_edge -other_bottom).abs() <= snap_threshold {
+        snap_offset.y = other_bottom - top_edge;
+        result.snap_edges.top = true;
+        result.snapped = true;
+      } else if (bottom_edge - other_top).abs() <= snap_threshold {
+        snap_offset.y = other_top - bottom_edge;
+        result.snap_edges.bottom = true;
+        result.snapped = true;
+      }
+    }
+  }
+
+  result.position = window_pos + snap_offset;
+  result
 }
 
 // Plugin < ========================================================================== |
