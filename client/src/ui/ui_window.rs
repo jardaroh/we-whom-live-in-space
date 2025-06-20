@@ -105,6 +105,8 @@ pub struct Window {
   pub state: WindowState,
   pub drag_offset: Vec2,
   pub drag_handle: Option<ResizeHandle>,
+  pub is_collapsed: bool,
+  pub uncollapsed_size: Vec2,
 }
 
 impl Default for Window {
@@ -117,6 +119,8 @@ impl Default for Window {
       state: WindowState::Normal,
       drag_offset: Vec2::ZERO,
       drag_handle: None,
+      is_collapsed: false,
+      uncollapsed_size: Vec2::new(800.0, 600.0),
     }
   }
 }
@@ -419,6 +423,12 @@ fn handle_window_resize(
 ) {
   // Start resize
   for event in resize_events.read() {
+    if let Ok((window, _)) = window_query.get(event.window_entity) {
+      if window.is_collapsed {
+        continue;
+      }
+    }
+
     if let Ok(window) = primary_window.single() {
       if let Some(cursor_pos) = window.cursor_position() {
         *last_cursor_pos = Some(cursor_pos);
@@ -456,6 +466,10 @@ fn handle_window_resize(
           }
 
           for (mut win, mut node) in window_query.iter_mut() {
+            if win.is_collapsed {
+              continue; // Skip resizing collapsed windows
+            }
+
             if let Some(handle_type) = win.drag_handle {
               if handle_type != ResizeHandle::None { // ResizeHandle::None is for dragging
                 let min_size = Vec2::new(100.0, 80.0); // Minimum window size
@@ -644,6 +658,41 @@ fn handle_window_close(
     }
 }
 
+fn handle_window_collapse(
+    mut collapse_events: EventReader<WindowCollapseEvent>,
+    mut window_query: Query<(&mut Window, &mut Node)>,
+    mut content_query: Query<&mut Visibility, (With<WindowContent>, Without<Window>)>,
+    mut resize_handle_query: Query<&mut Visibility, (With<WindowResizeHandle>, Without<Window>, Without<WindowContent>)>,
+    children_query: Query<&Children>,
+) {
+    for event in collapse_events.read() {
+        if let Ok((mut window, mut window_node)) = window_query.get_mut(event.window_entity) {
+            window.is_collapsed = !window.is_collapsed;
+            
+            if window.is_collapsed {
+                // Store the current size before collapsing
+                window.uncollapsed_size = window.size;
+                
+                // Set window height to just the title bar (30px + padding)
+                let collapsed_height = 30.0;
+                window.size.y = collapsed_height;
+                window_node.height = Val::Px(collapsed_height);
+                
+                // Hide content area and resize handles
+                hide_window_children(event.window_entity, &children_query, &mut content_query, &mut resize_handle_query, false);
+            } else {
+                // Restore the original size
+                window.size = window.uncollapsed_size;
+                window_node.width = Val::Px(window.size.x);
+                window_node.height = Val::Px(window.size.y);
+                
+                // Show content area and resize handles
+                hide_window_children(event.window_entity, &children_query, &mut content_query, &mut resize_handle_query, true);
+            }
+        }
+    }
+}
+
 // Helper functions <================================================================= |
 pub fn create_window(
   commands: &mut Commands,
@@ -711,6 +760,31 @@ pub fn create_window(
       ..default()
     },
   )).id();
+
+  let collapse_button = commands.spawn((
+    Node {
+      width: Val::Px(20.0),
+      height: Val::Px(20.0),
+      justify_content: JustifyContent::Center,
+      align_items: AlignItems::Center,
+      ..default()
+    },
+    BackgroundColor(Color::srgb(0.5, 0.5, 0.5)),
+    BorderRadius::all(Val::Px(2.0)),
+    Interaction::default(),
+    WindowCollapseButton {
+      window_entity,
+    },
+  )).with_children(|parent| {
+    parent.spawn((
+      Text::new("_"),
+      TextFont {
+        font_size: 12.0,
+        ..default()
+      },
+      TextColor(Color::srgb(0.9, 0.9, 0.9)),
+    ));
+  }).id();
 
   let minimize_button = commands.spawn((
     Node {
@@ -796,7 +870,7 @@ pub fn create_window(
   let left_handle = create_edge_resize_handle(commands, window_entity, ResizeHandle::Left, Vec2::new(resize_handle_size, size.y - 2.0 * resize_handle_size), Vec2::new(0.0, resize_handle_size));
   let right_handle = create_edge_resize_handle(commands, window_entity, ResizeHandle::Right, Vec2::new(resize_handle_size, size.y - 2.0 * resize_handle_size), Vec2::new(size.x - resize_handle_size, resize_handle_size));
 
-  commands.entity(buttons_container).add_children(&[minimize_button, close_button]);
+  commands.entity(buttons_container).add_children(&[collapse_button, minimize_button, close_button]);
   commands.entity(title_bar).add_children(&[title_text, buttons_container]);
   commands.entity(window_entity).add_children(&[
     title_bar,
@@ -865,6 +939,59 @@ fn update_resize_handle_positions(
       }
     }
   }
+}
+
+fn hide_window_children(
+    window_entity: Entity,
+    children_query: &Query<&Children>,
+    content_query: &mut Query<&mut Visibility, (With<WindowContent>, Without<Window>)>,
+    resize_handle_query: &mut Query<&mut Visibility, (With<WindowResizeHandle>, Without<Window>, Without<WindowContent>)>,
+    show: bool,
+) {
+    let visibility = if show { Visibility::Inherited } else { Visibility::Hidden };
+    
+    // Recursively find and hide/show children of this specific window
+    if let Ok(children) = children_query.get(window_entity) {
+        for child in children.iter() {
+            // Check if this child is a content area
+            if let Ok(mut content_visibility) = content_query.get_mut(child) {
+                *content_visibility = visibility;
+            }
+            
+            // Check if this child is a resize handle
+            if let Ok(mut handle_visibility) = resize_handle_query.get_mut(child) {
+                *handle_visibility = visibility;
+            }
+            
+            // Recursively check grandchildren
+            hide_window_children_recursive(child, children_query, content_query, resize_handle_query, visibility);
+        }
+    }
+}
+
+fn hide_window_children_recursive(
+    entity: Entity,
+    children_query: &Query<&Children>,
+    content_query: &mut Query<&mut Visibility, (With<WindowContent>, Without<Window>)>,
+    resize_handle_query: &mut Query<&mut Visibility, (With<WindowResizeHandle>, Without<Window>, Without<WindowContent>)>,
+    visibility: Visibility,
+) {
+    if let Ok(children) = children_query.get(entity) {
+        for child in children.iter() {
+            // Check if this child is a content area
+            if let Ok(mut content_visibility) = content_query.get_mut(child) {
+                *content_visibility = visibility;
+            }
+            
+            // Check if this child is a resize handle
+            if let Ok(mut handle_visibility) = resize_handle_query.get_mut(child) {
+                *handle_visibility = visibility;
+            }
+            
+            // Continue recursively
+            hide_window_children_recursive(child, children_query, content_query, resize_handle_query, visibility);
+        }
+    }
 }
 
 // Handle creation functions < ======================================================= |
@@ -1378,6 +1505,7 @@ impl Plugin for WindowPlugin {
         handle_window_focus,
         handle_window_snap,
         handle_window_buttons,
+        handle_window_collapse,
         update_window_z_order,
         handle_window_close,
       ).chain());
