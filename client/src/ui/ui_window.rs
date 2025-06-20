@@ -1485,57 +1485,42 @@ fn calculate_resize_snap_position(
           *other_pos + *other_size,                             // Other bottom-right
         ];
 
-        for other_corner in other_corners {
-          let corner_distance = (corner - other_corner).length();
-          if corner_distance <= snap_threshold {
-            // Apply the snap based on which corner and handle
-            match (handle_type, corner_index) {
-              // Corner handles
-              (ResizeHandle::TopLeft, 0) => {
-                let size_change = window_pos - other_corner;
-                final_position = other_corner;
-                final_size = window_size + size_change;
+        for (corner_index, &corner) in window_corners.iter().enumerate() {
+          for other_corner in other_corners {
+            let corner_distance = (corner - other_corner).length();
+            if corner_distance <= snap_threshold {
+              // Apply the snap based on which corner matched
+              match corner_index {
+                0 => { // Top-left corner snapped
+                  let size_change = window_pos - other_corner;
+                  final_position = other_corner;
+                  final_size = window_size + size_change;
+                }
+                1 => { // Top-right corner snapped
+                  let new_width = other_corner.x - window_pos.x;
+                  let size_change_y = window_pos.y - other_corner.y;
+                  final_position.y = other_corner.y;
+                  final_size.x = new_width;
+                  final_size.y = window_size.y + size_change_y;
+                }
+                2 => { // Bottom-left corner snapped
+                  let size_change_x = window_pos.x - other_corner.x;
+                  let new_height = other_corner.y - window_pos.y;
+                  final_position.x = other_corner.x;
+                  final_size.x = window_size.x + size_change_x;
+                  final_size.y = new_height;
+                }
+                3 => { // Bottom-right corner snapped
+                  final_size.x = other_corner.x - window_pos.x;
+                  final_size.y = other_corner.y - window_pos.y;
+                }
+                _ => {}
               }
-              (ResizeHandle::TopRight, 1) => {
-                let new_width = other_corner.x - window_pos.x;
-                let size_change_y = window_pos.y - other_corner.y;
-                final_position.y = other_corner.y;
-                final_size.x = new_width;
-                final_size.y = window_size.y + size_change_y;
-              }
-              (ResizeHandle::BottomLeft, 2) => {
-                let size_change_x = window_pos.x - other_corner.x;
-                let new_height = other_corner.y - window_pos.y;
-                final_position.x = other_corner.x;
-                final_size.x = window_size.x + size_change_x;
-                final_size.y = new_height;
-              }
-              (ResizeHandle::BottomRight, 3) => {
-                final_size.x = other_corner.x - window_pos.x;
-                final_size.y = other_corner.y - window_pos.y;
-              }
-              // Edge handles with corners
-              (ResizeHandle::Top, 0) | (ResizeHandle::Top, 1) => {
-                let size_change_y = window_pos.y - other_corner.y;
-                final_position.y = other_corner.y;
-                final_size.y = window_size.y + size_change_y;
-              }
-              (ResizeHandle::Bottom, 2) | (ResizeHandle::Bottom, 3) => {
-                final_size.y = other_corner.y - window_pos.y;
-              }
-              (ResizeHandle::Left, 0) | (ResizeHandle::Left, 2) => {
-                let size_change_x = window_pos.x - other_corner.x;
-                final_position.x = other_corner.x;
-                final_size.x = window_size.x + size_change_x;
-              }
-              (ResizeHandle::Right, 1) | (ResizeHandle::Right, 3) => {
-                final_size.x = other_corner.x - window_pos.x;
-              }
-              _ => {}
+              result.snapped = true;
+              break;
             }
-            result.snapped = true;
-            break;
           }
+          if result.snapped { break; }
         }
         if result.snapped { break; }
       }
