@@ -496,7 +496,9 @@ fn handle_window_resize(
                   }
               }
               if let Some(resizing) = resizing_entity {
-                  if win.z_index == window_query.get(resizing).map(|(w, _)| w.z_index).unwrap_or(-1) {
+                  if win.z_index == window_query.get(resizing).map(
+                    |(w, _)| w.z_index
+                  ).unwrap_or(-1) {
                       continue;
                   }
               }
@@ -681,7 +683,14 @@ fn handle_window_snap(
 }
 
 fn handle_window_buttons(
-    mut interaction_query: Query<(&Interaction, Entity), (Changed<Interaction>, Or<(With<WindowCloseButton>, With<WindowMinimizeButton>, With<WindowMaximizeButton>, With<WindowCollapseButton>)>)>,
+    mut interaction_query: Query<
+      (&Interaction, Entity),
+      (Changed<Interaction>, Or<(
+        With<WindowCloseButton>,
+        With<WindowMinimizeButton>,
+        With<WindowMaximizeButton>,
+        With<WindowCollapseButton>,
+      )>)>,
     close_query: Query<&WindowCloseButton>,
     minimize_query: Query<&WindowMinimizeButton>, 
     maximize_query: Query<&WindowMaximizeButton>,
