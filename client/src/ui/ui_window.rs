@@ -1,4 +1,4 @@
-use bevy::{math::VectorSpace, picking::window, prelude::*};
+use bevy::{math::VectorSpace, picking::window, prelude::*, ui::FocusPolicy};
 
 #[derive(Event)]
 pub struct WindowCloseEvent {
@@ -887,6 +887,7 @@ pub fn create_window(
     BackgroundColor(Color::srgb(0.15, 0.15, 0.15)),
     ZIndex(window_manager.next_z_index),
     Interaction::default(),
+    FocusPolicy::Block,
     Window {
       title: title.to_string(),
       size,
