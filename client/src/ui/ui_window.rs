@@ -1,4 +1,6 @@
-use bevy::{math::VectorSpace, picking::window, prelude::*, ui::FocusPolicy};
+use std::os::unix::process;
+
+use bevy::{asset::UnknownTyped, ecs::relationship::RelatedSpawnerCommands, math::VectorSpace, picking::window, prelude::*, ui::FocusPolicy};
 
 #[derive(Event)]
 pub struct WindowCloseEvent {
@@ -48,6 +50,11 @@ pub struct WindowSnapEvent {
   pub snap_size: Option<Vec2>,
 }
 
+#[derive(Event)]
+pub struct WindowContentUpdateEvent {
+  pub window_entity: Entity,
+  pub new_content: Entity,
+}
 
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -168,6 +175,11 @@ pub struct WindowCollapseButton {
 }
 
 #[derive(Component)]
+pub struct WindowContentArea {
+  pub window_entity: Entity,
+}
+
+#[derive(Component)]
 pub struct WindowResizeHandle {
   pub handle_type: ResizeHandle,
 }
@@ -181,6 +193,7 @@ pub struct WindowManager {
   pub is_resizing_window: bool,
   pub dragging_window_entity: Option<Entity>,
   pub snap_enabled: bool,
+  pub pending_content_updates: Vec<(Entity, Box<dyn FnOnce(&mut RelatedSpawnerCommands<ChildOf>) + Send + Sync>)>,
 }
 
 impl Default for WindowManager {
@@ -193,6 +206,7 @@ impl Default for WindowManager {
       is_resizing_window: false,
       dragging_window_entity: None,
       snap_enabled: true,
+      pending_content_updates: vec![],
     }
   }
 }
@@ -864,6 +878,24 @@ fn handle_window_minimize(
   }
 }
 
+pub fn process_pending_content_updates(
+  mut commands: Commands,
+  mut window_manager: ResMut<WindowManager>,
+  content_area_query: Query<(Entity, &WindowContentArea)>,
+) {
+  let updates = std::mem::take(&mut window_manager.pending_content_updates);
+
+  for (window_entity, content_builder) in updates {
+    for (content_area_entity, content_area) in content_area_query.iter() {
+      if content_area.window_entity == window_entity {
+        commands.entity(content_area_entity).despawn_related::<Children>();
+        commands.entity(content_area_entity).with_children(content_builder);
+        break;
+      }
+    }
+  }
+}
+
 // Helper functions <================================================================= |
 pub fn create_window(
   commands: &mut Commands,
@@ -1043,6 +1075,9 @@ pub fn create_window(
     },
     BackgroundColor(Color::srgb(0.1, 0.1, 0.1)),
     WindowContent,
+    WindowContentArea {
+      window_entity,
+    },
   )).with_children(|parent| {
     parent.spawn((
       Text::new("This is the window content area."),
@@ -1083,6 +1118,16 @@ pub fn create_window(
   ]);
 
   window_entity
+}
+
+pub fn update_window_content<F>(
+  window_manager: &mut ResMut<WindowManager>,
+  window_entity: Entity,
+  content_builder: F,
+) where
+  F: FnOnce(&mut RelatedSpawnerCommands<ChildOf>) + Send + Sync + 'static,
+{
+  window_manager.pending_content_updates.push((window_entity, Box::new(content_builder)));
 }
 
 fn update_resize_handle_positions(
@@ -1741,6 +1786,7 @@ impl Plugin for WindowPlugin {
         handle_window_minimize,
         update_window_z_order,
         handle_window_close,
+        process_pending_content_updates,
       ).chain());
   }
 }
