@@ -450,6 +450,10 @@ fn handle_window_focus(
 fn handle_window_resize(
   mut resize_events: EventReader<WindowResizeEvent>,
   mut window_query: Query<(&mut Window, &mut Node)>,
+  title_bar_query: Query<&Node, (With<WindowTitleBar>, Without<Window>)>,
+  content_query: Query<&Node, (With<WindowContentArea>, Without<Window>, Without<WindowTitleBar>)>,
+  children_query: Query<&Children>,
+  node_query: Query<&Node, (Without<Window>, Without<WindowTitleBar>, Without<WindowContentArea>)>,
   mouse_buttons: Res<ButtonInput<MouseButton>>,
   primary_window: Query<&bevy::window::Window, With<bevy::window::PrimaryWindow>>,
   mut last_cursor_pos: Local<Option<Vec2>>,
@@ -466,7 +470,7 @@ fn handle_window_resize(
     if let Ok(window) = primary_window.single() {
       if let Some(cursor_pos) = window.cursor_position() {
         *last_cursor_pos = Some(cursor_pos);
-        window_manager.is_dragging_window = true; // Prevent camera orbit during resize
+        window_manager.is_dragging_window = true;
         window_manager.dragging_window_entity = Some(event.window_entity);
       }
     }
@@ -486,101 +490,109 @@ fn handle_window_resize(
           let resizing_entity = window_manager.dragging_window_entity;
 
           for (win, _) in window_query.iter() {
-            if let Some(handle_type) = win.drag_handle {
-              if handle_type != ResizeHandle::None {
-                continue;
+              if let Some(handle_type) = win.drag_handle {
+                  if handle_type != ResizeHandle::None {
+                      continue;
+                  }
               }
-            }
-            if let Some(resizing) = resizing_entity {
-              if win.z_index == window_query.get(resizing).map(|(w, _)| w.z_index).unwrap_or(-1) {
-                continue;
+              if let Some(resizing) = resizing_entity {
+                  if win.z_index == window_query.get(resizing).map(|(w, _)| w.z_index).unwrap_or(-1) {
+                      continue;
+                  }
               }
-            }
-            other_windows.push((win.position, win.size));
+              other_windows.push((win.position, win.size));
           }
 
           for (mut win, mut node) in window_query.iter_mut() {
-            if win.is_collapsed || win.is_maximized || win.is_minimized {
-              continue; // Skip resizing collapsed windows
-            }
+              if win.is_collapsed || win.is_maximized || win.is_minimized {
+                continue;
+              }
 
-            if let Some(handle_type) = win.drag_handle {
-              if handle_type != ResizeHandle::None { // ResizeHandle::None is for dragging
-                let min_size = Vec2::new(100.0, 80.0); // Minimum window size
-                let mut new_position = win.position;
-                let mut new_size = win.size;
-                
-                match handle_type {
-                  ResizeHandle::Right => {
-                    new_size.x = (win.size.x + delta.x).max(min_size.x);
-                    let max_width = screen_width - win.position.x;
-                    new_size.x = new_size.x.min(max_width);
-                  }
-                  ResizeHandle::Bottom => {
-                    new_size.y = (win.size.y + delta.y).max(min_size.y);
-                    let max_height = screen_height - win.position.y;
-                    new_size.y = new_size.y.min(max_height);
-                  }
-                  ResizeHandle::BottomRight => {
-                    new_size.x = (win.size.x + delta.x).max(min_size.x);
-                    new_size.y = (win.size.y + delta.y).max(min_size.y);
-                    let max_width = screen_width - win.position.x;
-                    let max_height = screen_height - win.position.y;
-                    new_size.x = new_size.x.min(max_width);
-                    new_size.y = new_size.y.min(max_height);
-                  }
-                  ResizeHandle::Left => {
-                    let proposed_width = (win.size.x - delta.x).max(min_size.x);
-                    new_position.x = win.position.x + (win.size.x - proposed_width);
-                    if new_position.x >= 0.0 {
-                      new_size.x = proposed_width;
+              if let Some(handle_type) = win.drag_handle {
+                if handle_type != ResizeHandle::None {
+                  // Calculate minimum size for this window
+                  let min_size = calculate_window_minimum_size(
+                    resizing_entity.unwrap_or(Entity::PLACEHOLDER),
+                    &title_bar_query,
+                    &content_query,
+                    &children_query,
+                    &node_query,
+                  );
+                  
+                  let mut new_position = win.position;
+                  let mut new_size = win.size;
+                  
+                  match handle_type {
+                    ResizeHandle::Right => {
+                      new_size.x = (win.size.x + delta.x).max(min_size.x);
+                      let max_width = screen_width - win.position.x;
+                      new_size.x = new_size.x.min(max_width);
                     }
-                  }
-                  ResizeHandle::Top => {
-                    let proposed_height = (win.size.y - delta.y).max(min_size.y);
-                    new_position.y = win.position.y + (win.size.y - proposed_height);
-                    if new_position.y >= 0.0 {
-                      new_size.y = proposed_height;
+                    ResizeHandle::Bottom => {
+                      new_size.y = (win.size.y + delta.y).max(min_size.y);
+                      let max_height = screen_height - win.position.y;
+                      new_size.y = new_size.y.min(max_height);
                     }
-                  }
-                  ResizeHandle::TopLeft => {
-                    let proposed_width = (win.size.x - delta.x).max(min_size.x);
-                    let proposed_height = (win.size.y - delta.y).max(min_size.y);
-                    let proposed_pos_x = win.position.x + (win.size.x - proposed_width);
-                    let proposed_pos_y = win.position.y + (win.size.y - proposed_height);
-                    
-                    if proposed_pos_x >= 0.0 && proposed_pos_y >= 0.0 {
-                      new_size.x = proposed_width;
-                      new_size.y = proposed_height;
-                      new_position.x = proposed_pos_x;
-                      new_position.y = proposed_pos_y;
+                    ResizeHandle::BottomRight => {
+                      new_size.x = (win.size.x + delta.x).max(min_size.x);
+                      new_size.y = (win.size.y + delta.y).max(min_size.y);
+                      let max_width = screen_width - win.position.x;
+                      let max_height = screen_height - win.position.y;
+                      new_size.x = new_size.x.min(max_width);
+                      new_size.y = new_size.y.min(max_height);
                     }
-                  }
-                  ResizeHandle::TopRight => {
-                    let proposed_width = (win.size.x + delta.x).max(min_size.x);
-                    let proposed_height = (win.size.y - delta.y).max(min_size.y);
-                    let proposed_pos_y = win.position.y + (win.size.y - proposed_height);
-                    let max_width = screen_width - win.position.x;
-                    
-                    if proposed_pos_y >= 0.0 {
-                      new_size.x = proposed_width.min(max_width);
-                      new_size.y = proposed_height;
-                      new_position.y = proposed_pos_y;
+                    ResizeHandle::Left => {
+                      let proposed_width = (win.size.x - delta.x).max(min_size.x);
+                      new_position.x = win.position.x + (win.size.x - proposed_width);
+                      if new_position.x >= 0.0 {
+                        new_size.x = proposed_width;
+                      }
                     }
-                  }
-                  ResizeHandle::BottomLeft => {
-                    let proposed_width = (win.size.x - delta.x).max(min_size.x);
-                    let proposed_height = (win.size.y + delta.y).max(min_size.y);
-                    let proposed_pos_x = win.position.x + (win.size.x - proposed_width);
-                    let max_height = screen_height - win.position.y;
-                    
-                    if proposed_pos_x >= 0.0 {
-                      new_size.x = proposed_width;
-                      new_size.y = proposed_height.min(max_height);
-                      new_position.x = proposed_pos_x;
+                    ResizeHandle::Top => {
+                      let proposed_height = (win.size.y - delta.y).max(min_size.y);
+                      new_position.y = win.position.y + (win.size.y - proposed_height);
+                      if new_position.y >= 0.0 {
+                        new_size.y = proposed_height;
+                      }
                     }
-                  }
-                  _ => {}
+                    ResizeHandle::TopLeft => {
+                      let proposed_width = (win.size.x - delta.x).max(min_size.x);
+                      let proposed_height = (win.size.y - delta.y).max(min_size.y);
+                      let proposed_pos_x = win.position.x + (win.size.x - proposed_width);
+                      let proposed_pos_y = win.position.y + (win.size.y - proposed_height);
+                      
+                      if proposed_pos_x >= 0.0 && proposed_pos_y >= 0.0 {
+                        new_size.x = proposed_width;
+                        new_size.y = proposed_height;
+                        new_position.x = proposed_pos_x;
+                        new_position.y = proposed_pos_y;
+                      }
+                    }
+                    ResizeHandle::TopRight => {
+                      let proposed_width = (win.size.x + delta.x).max(min_size.x);
+                      let proposed_height = (win.size.y - delta.y).max(min_size.y);
+                      let proposed_pos_y = win.position.y + (win.size.y - proposed_height);
+                      let max_width = screen_width - win.position.x;
+                      
+                      if proposed_pos_y >= 0.0 {
+                        new_size.x = proposed_width.min(max_width);
+                        new_size.y = proposed_height;
+                        new_position.y = proposed_pos_y;
+                      }
+                    }
+                    ResizeHandle::BottomLeft => {
+                      let proposed_width = (win.size.x - delta.x).max(min_size.x);
+                      let proposed_height = (win.size.y + delta.y).max(min_size.y);
+                      let proposed_pos_x = win.position.x + (win.size.x - proposed_width);
+                      let max_height = screen_height - win.position.y;
+                      
+                      if proposed_pos_x >= 0.0 {
+                        new_size.x = proposed_width;
+                        new_size.y = proposed_height.min(max_height);
+                        new_position.x = proposed_pos_x;
+                      }
+                    }
+                    _ => {}
                 }
 
                 if window_manager.snap_enabled {
@@ -594,6 +606,10 @@ fn handle_window_resize(
                   );
                   new_position = snap_result.position;
                   new_size = snap_result.size;
+                  
+                  // Ensure snapped size still respects minimum
+                  new_size.x = new_size.x.max(min_size.x);
+                  new_size.y = new_size.y.max(min_size.y);
                 }
                 
                 win.position = new_position;
@@ -610,7 +626,7 @@ fn handle_window_resize(
       }
     }
   } else {
-    // Stop resizing
+    // Stop resizing - rest of the function remains the same
     for (mut win, _) in window_query.iter_mut() {
       if let Some(handle_type) = win.drag_handle {
         if handle_type != ResizeHandle::None {
@@ -624,6 +640,34 @@ fn handle_window_resize(
     if window_manager.is_dragging_window {
       window_manager.is_dragging_window = false;
       window_manager.dragging_window_entity = None;
+    }
+  }
+}
+
+fn enforce_window_minimum_sizes(
+  mut window_query: Query<(Entity, &mut Window, &mut Node), Changed<Window>>,
+  title_bar_query: Query<&Node, (With<WindowTitleBar>, Without<Window>)>,
+  content_query: Query<&Node, (With<WindowContentArea>, Without<Window>, Without<WindowTitleBar>)>,
+  children_query: Query<&Children>,
+  node_query: Query<&Node, (Without<Window>, Without<WindowTitleBar>, Without<WindowContentArea>)>,
+) {
+  for (entity, mut window, mut node) in window_query.iter_mut() {
+    let min_size = calculate_window_minimum_size(
+      entity,
+      &title_bar_query,
+      &content_query,
+      &children_query,
+      &node_query,
+    );
+    
+    // Enforce minimum size
+    if window.size.x < min_size.x || window.size.y < min_size.y {
+      window.size.x = window.size.x.max(min_size.x);
+      window.size.y = window.size.y.max(min_size.y);
+      
+      // Update UI node
+      node.width = Val::Px(window.size.x);
+      node.height = Val::Px(window.size.y);
     }
   }
 }
@@ -939,6 +983,7 @@ pub fn create_window(
       justify_content: JustifyContent::SpaceBetween,
       align_items: AlignItems::Center,
       padding: UiRect::all(Val::Px(8.0)),
+      overflow: Overflow::clip(),
       ..default()
     },
     BackgroundColor(Color::srgb(0.2, 0.2, 0.2)),
@@ -948,6 +993,16 @@ pub fn create_window(
     },
   )).id();
 
+  let title_container = commands.spawn(Node {
+      flex_direction: FlexDirection::Row,
+      align_items: AlignItems::Center,
+      flex_grow: 1.0,
+      flex_shrink: 1.0,
+      min_width: Val::Px(0.0),
+      overflow: Overflow::clip(),
+      ..default()
+    }).id();
+
   let title_text = commands.spawn((
     Text::new(title),
     TextFont {
@@ -955,12 +1010,20 @@ pub fn create_window(
       ..default()
     },
     TextColor(Color::srgb(0.9, 0.9, 0.9)),
+    TextLayout::new_with_no_wrap(),
+    Node {
+      max_width: Val::Percent(100.0),
+      overflow: Overflow::clip(),
+      ..default()
+    },
   )).id();
 
   let buttons_container = commands.spawn((
     Node {
       flex_direction: FlexDirection::Row,
       column_gap: Val::Px(4.0),
+      flex_shrink: 0.0,
+      align_items: AlignItems::Center,
       ..default()
     },
   )).id();
@@ -1102,8 +1165,9 @@ pub fn create_window(
   let left_handle = create_edge_resize_handle(commands, window_entity, ResizeHandle::Left, Vec2::new(resize_handle_size, size.y - 2.0 * resize_handle_size), Vec2::new(0.0, resize_handle_size));
   let right_handle = create_edge_resize_handle(commands, window_entity, ResizeHandle::Right, Vec2::new(resize_handle_size, size.y - 2.0 * resize_handle_size), Vec2::new(size.x - resize_handle_size, resize_handle_size));
 
+  commands.entity(title_container).add_children(&[title_text]);
   commands.entity(buttons_container).add_children(&[collapse_button, minimize_button, maximize_button, close_button]);
-  commands.entity(title_bar).add_children(&[title_text, buttons_container]);
+  commands.entity(title_bar).add_children(&[title_container, buttons_container]);
   commands.entity(window_entity).add_children(&[
     title_bar,
     content_area,
@@ -1756,6 +1820,89 @@ fn calculate_minimize_position(slot: usize, screen_width: f32, screen_height: f3
   Vec2::new(x, y)
 }
 
+fn calculate_window_minimum_size(
+  window_entity: Entity,
+  title_bar_query: &Query<&Node, (With<WindowTitleBar>, Without<Window>)>,
+  content_query: &Query<&Node, (With<WindowContentArea>, Without<Window>, Without<WindowTitleBar>)>,
+  children_query: &Query<&Children>,
+  node_query: &Query<&Node, (Without<Window>, Without<WindowTitleBar>, Without<WindowContentArea>)>,
+) -> Vec2 {
+  let mut min_width: f32 = 150.0; // Absolute minimum
+  let mut min_height: f32 = 30.0; // Title bar height
+  
+  // Calculate title bar minimum width
+  if let Ok(children) = children_query.get(window_entity) {
+    for child in children.iter() {
+      if let Ok(_title_bar_node) = title_bar_query.get(child) {
+        // Title bar needs space for title text + buttons
+        // Estimate: 4 buttons * 20px + gaps + padding + min title space
+        let button_area = 4.0 * 20.0 + 3.0 * 4.0; // buttons + gaps
+        let padding = 16.0; // 8px each side
+        let min_title_space = 50.0; // Minimum space for title text
+        
+        min_width = min_width.max(button_area + padding + min_title_space);
+        min_height = 30.0; // Fixed title bar height
+        break;
+      }
+    }
+    
+    // Calculate content area minimum size
+    for child in children.iter() {
+      if let Ok(_content_node) = content_query.get(child) {
+        // Get content minimum size (this is basic - you might want more sophisticated calculation)
+        let content_min_width = calculate_content_minimum_width(child, &children_query, &node_query);
+        let content_min_height = 50.0; // Minimum content height
+        
+        min_width = min_width.max(content_min_width);
+        min_height += content_min_height;
+        break;
+      }
+    }
+  }
+  
+  Vec2::new(min_width, min_height)
+}
+
+// Helper function to calculate content minimum width
+fn calculate_content_minimum_width(
+  content_entity: Entity,
+  children_query: &Query<&Children>,
+  node_query: &Query<&Node, (Without<Window>, Without<WindowTitleBar>, Without<WindowContentArea>)>,
+) -> f32 {
+  let mut min_width = 0.0;
+  
+  if let Ok(children) = children_query.get(content_entity) {
+    for child in children.iter() {
+      if let Ok(node) = node_query.get(child) {
+        // Calculate minimum width based on node properties
+        let node_min_width = match (&node.width, &node.min_width) {
+          (Val::Px(w), _) => *w,
+          (_, Val::Px(min_w)) => *min_w,
+          _ => 0.0,
+        };
+        
+        // For flex direction column, take the max width of children
+        // For flex direction row, sum the widths
+        match node.flex_direction {
+          FlexDirection::Row => min_width += node_min_width,
+          FlexDirection::Column => min_width = min_width.max(node_min_width),
+          _ => min_width = min_width.max(node_min_width),
+        }
+        
+        // Recursively check children
+        let child_min_width = calculate_content_minimum_width(child, children_query, node_query);
+        match node.flex_direction {
+          FlexDirection::Row => min_width += child_min_width,
+          FlexDirection::Column => min_width = min_width.max(child_min_width),
+          _ => min_width = min_width.max(child_min_width),
+        }
+      }
+    }
+  }
+  
+  min_width
+}
+
 // Plugin < ========================================================================== |
 pub struct WindowPlugin;
 
@@ -1787,6 +1934,7 @@ impl Plugin for WindowPlugin {
         update_window_z_order,
         handle_window_close,
         process_pending_content_updates,
+        enforce_window_minimum_sizes,
       ).chain());
   }
 }
